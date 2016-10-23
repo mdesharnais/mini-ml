@@ -1,0 +1,6 @@
+let tt = true in
+let ff = false in
+let n2 = 5 + 5 in
+let n5 = 5 / 5 in
+let rec fact = fun n -> if n < 1 then 1 else fact (n - 1) * n in
+print (fact 5)
