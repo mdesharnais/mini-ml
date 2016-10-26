@@ -1,13 +1,15 @@
 module Main where
 
 import qualified Lexer
+import qualified Parser
 import qualified System.Environment
 
 compileFile :: String -> IO ()
 compileFile filename = do
-  prog <- readFile filename
-  let tokens = Lexer.alexScanTokens prog
-  print tokens
+  srcCode <- readFile filename
+  let tokens = Lexer.alexScanTokens srcCode
+  let prog = Parser.parse tokens
+  print prog
 
 main :: IO ()
 main = do

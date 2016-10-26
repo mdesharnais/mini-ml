@@ -6,30 +6,32 @@ module Lexer where
 
 $digit = 0-9
 $alpha = [a-zA-Z]
+$alnum = [ $alpha $digit ]
+
 
 tokens :-
 
-  $white+       ;
-  "true"        { \p s -> TLitTrue p }
-  "false"       { \p s -> TLitFalse p }
-  "->"          { \p s -> TArrow p }
-  "*"           { \p s -> TMul p }
-  "/"           { \p s -> TDiv p }
-  "+"           { \p s -> TAdd p }
-  "-"           { \p s -> TSub p }
-  "<"           { \p s -> TLe p }
-  "="           { \p s -> TEq p }
-  "("           { \p s -> TLPar p }
-  ")"           { \p s -> TRPar p }
-  "fun"         { \p s -> TFun p }
-  "if"          { \p s -> TIf p }
-  "then"        { \p s -> TThen p }
-  "else"        { \p s -> TElse p }
-  "let"         { \p s -> TLet p }
-  "in"          { \p s -> TIn p }
-  "rec"         { \p s -> TRec p }
-  $digit+       { \p s -> TLitInt p (read s) }
-  $alpha+       { \p s -> TId p s }
+  $white+           ;
+  "true"            { \p s -> TLitTrue p }
+  "false"           { \p s -> TLitFalse p }
+  "->"              { \p s -> TArrow p }
+  "*"               { \p s -> TMul p }
+  "/"               { \p s -> TDiv p }
+  "+"               { \p s -> TAdd p }
+  "-"               { \p s -> TSub p }
+  "<"               { \p s -> TLe p }
+  "="               { \p s -> TEq p }
+  "("               { \p s -> TLPar p }
+  ")"               { \p s -> TRPar p }
+  "fun"             { \p s -> TFun p }
+  "if"              { \p s -> TIf p }
+  "then"            { \p s -> TThen p }
+  "else"            { \p s -> TElse p }
+  "let"             { \p s -> TLet p }
+  "in"              { \p s -> TIn p }
+  "rec"             { \p s -> TRec p }
+  $digit+           { \p s -> TLitInt p (read s) }
+  $alpha $alnum*    { \p s -> TId p s }
 
 {
 data Token =
