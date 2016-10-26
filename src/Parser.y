@@ -37,8 +37,8 @@ import Lexer
 Exp :: { Term }
 Exp : Abs                     { $1 }
     | Exp0                    { $1 }
-    | If                     { $1 }
-    | Let                    { $1 }
+    | If                      { $1 }
+    | Let                     { $1 }
 
 Exp0 :: { Term }
 Exp0 : ArithExp               { $1 }
@@ -62,12 +62,12 @@ Lit : INT                     { LitInt $1 }
     | 'false'                 { LitFalse }
 
 ArithExp :: { Term }
-ArithExp : Exp0 '+' Exp0        { OpAdd $1 $3 }
-         | Exp0 '-' Exp0        { OpSub $1 $3 }
-         | Exp0 '*' Exp0        { OpSub $1 $3 }
-         | Exp0 '/' Exp0        { OpSub $1 $3 }
-         | Exp0 '<' Exp0        { OpLT $1 $3 }
-         | Exp0 '=' Exp0        { OpEQ $1 $3 }
+ArithExp : Exp0 '+' Exp0      { OpAdd $1 $3 }
+         | Exp0 '-' Exp0      { OpSub $1 $3 }
+         | Exp0 '*' Exp0      { OpSub $1 $3 }
+         | Exp0 '/' Exp0      { OpSub $1 $3 }
+         | Exp0 '<' Exp0      { OpLT $1 $3 }
+         | Exp0 '=' Exp0      { OpEQ $1 $3 }
 
 Let :: { Term }
 Let : 'let' ID '=' Exp 'in' Exp         { Let $2 $4 $6 }
@@ -77,13 +77,6 @@ If :: { Term }
 If : 'if' Exp 'then' Exp 'else' Exp     { If $2 $4 $6 }
 
 {
-
-{-
-BoolExp :: { Term }
-BoolExp : Exp '<' Exp       { OpLT $1 $3 }
-        | Exp '=' Exp       { OpEQ $1 $3 }
--}
-
 data Term =
   Var String |
   Abs String Term |
