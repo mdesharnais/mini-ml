@@ -35,24 +35,18 @@ import Lexer
 
 %%
 
-Term :: { Term }
-Term : Abs                    { $1 }
-     | App                    { $1 }
-     | Lit                    { $1 }
-     | BinOp                  { $1 }
-     | IfThenElse             { $1 }
-     | Let                    { $1 }
+Exp :: { Term }
+Exp : AtExp                   { $1 }
+    | Exp AtExp               { App $1 $2 }
+    | 'fun' ID '->' Exp       { Abs $2 $4 }
+    | BinOp                   { $1 }
+    | Let                     { $1 }
+    | If                      { $1 }
 
-Abs :: { Term }
-Abs : 'fun' ID '->' Term      { Abs $2 $4 }
-
-App :: { Term }
-App : AtomicExpr              { $1 }
-    | App AtomicExpr          { App $1 $2 }
-
-AtomicExpr :: { Term }
-AtomicExpr : ID               { Var $1 }
-           | '(' Term ')'     { $2 }
+AtExp :: { Term }
+AtExp : ID                    { Var $1 }
+      | Lit                   { $1 }
+      | '(' Exp ')'           { $2 }
 
 Lit :: { Term }
 Lit : INT                     { LitInt $1 }
@@ -60,19 +54,19 @@ Lit : INT                     { LitInt $1 }
     | 'false'                 { LitFalse }
 
 BinOp :: { Term }
-BinOp : Term '*' Term         { OpMul $1 $3 }
-      | Term '/' Term         { OpDiv $1 $3 }
-      | Term '+' Term         { OpAdd $1 $3 }
-      | Term '-' Term         { OpSub $1 $3 }
-      | Term '=' Term         { OpEQ $1 $3 }
-      | Term '<' Term         { OpLT $1 $3 }
-
-IfThenElse :: { Term }
-IfThenElse : 'if' Term 'then' Term 'else' Term    { If $2 $4 $6 }
+BinOp : AtExp '*' Exp         { OpMul $1 $3 }
+      | AtExp '/' Exp         { OpDiv $1 $3 }
+      | AtExp '+' Exp         { OpAdd $1 $3 }
+      | AtExp '-' Exp         { OpSub $1 $3 }
+      | AtExp '=' Exp         { OpEQ $1 $3 }
+      | AtExp '<' Exp         { OpLT $1 $3 }
 
 Let :: { Term }
-Let : 'let' ID '=' Term 'in' Term                 { Let $2 $4 $6 }
-    | 'let' 'rec' ID '=' Term 'in' Term           { LetRec $3 $5 $7 }
+Let : 'let' ID '=' Exp 'in' Exp         { Let $2 $4 $6 }
+    | 'let' 'rec' ID '=' Exp 'in' Exp   { LetRec $3 $5 $7 }
+
+If :: { Term }
+If : 'if' Exp 'then' Exp 'else' Exp     { If $2 $4 $6 }
 
 {
 data Term =
