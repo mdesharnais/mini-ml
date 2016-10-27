@@ -8,26 +8,26 @@ import Lexer
 %tokentype { Token }
 
 %token
-  'true'        { TLitTrue _ }
-  'false'       { TLitFalse _ }
-  '->'          { TArrow _ }
-  '*'           { TMul _ }
-  '/'           { TDiv _ }
-  '+'           { TAdd _ }
-  '-'           { TSub _ }
-  '<'           { TLe _ }
-  '='           { TEq _ }
-  '('           { TLPar _ }
-  ')'           { TRPar _ }
-  'fun'         { TFun _ }
-  'if'          { TIf _ }
-  'then'        { TThen _ }
-  'else'        { TElse _ }
-  'let'         { TLet _ }
-  'in'          { TIn _ }
-  'rec'         { TRec _ }
-  INT           { TLitInt _ $$ }
-  ID            { TId _ $$ }
+  'true'        { (_, TLitTrue) }
+  'false'       { (_, TLitFalse) }
+  '->'          { (_, TArrow) }
+  '*'           { (_, TMul) }
+  '/'           { (_, TDiv) }
+  '+'           { (_, TAdd) }
+  '-'           { (_, TSub) }
+  '<'           { (_, TLe) }
+  '='           { (_, TEq) }
+  '('           { (_, TLPar) }
+  ')'           { (_, TRPar) }
+  'fun'         { (_, TFun) }
+  'if'          { (_, TIf) }
+  'then'        { (_, TThen) }
+  'else'        { (_, TElse) }
+  'let'         { (_, TLet) }
+  'in'          { (_, TIn) }
+  'rec'         { (_, TRec) }
+  INT           { (_, TLitInt $$) }
+  ID            { (_, TId $$) }
 
 %left '+' '-'
 %left '*' '/'
