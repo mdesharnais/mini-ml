@@ -64,8 +64,8 @@ Lit : INT                     { LitInt $1 }
 ArithExp :: { Term }
 ArithExp : Exp0 '+' Exp0      { OpAdd $1 $3 }
          | Exp0 '-' Exp0      { OpSub $1 $3 }
-         | Exp0 '*' Exp0      { OpSub $1 $3 }
-         | Exp0 '/' Exp0      { OpSub $1 $3 }
+         | Exp0 '*' Exp0      { OpMul $1 $3 }
+         | Exp0 '/' Exp0      { OpDiv $1 $3 }
          | Exp0 '<' Exp0      { OpLT $1 $3 }
          | Exp0 '=' Exp0      { OpEQ $1 $3 }
 
