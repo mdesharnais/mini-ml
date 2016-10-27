@@ -71,7 +71,7 @@ ArithExp : Exp0 '+' Exp0      { OpAdd $1 $3 }
 
 Let :: { Term }
 Let : 'let' ID '=' Exp 'in' Exp         { Let $2 $4 $6 }
-    | 'let' 'rec' ID '=' Exp 'in' Exp   { LetRec $3 $5 $7 }
+    | 'let' 'rec' ID '=' Abs 'in' Exp   { LetRec $3 $5 $7 }
 
 If :: { Term }
 If : 'if' Exp 'then' Exp 'else' Exp     { If $2 $4 $6 }
