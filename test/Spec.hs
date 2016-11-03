@@ -1,8 +1,10 @@
 import qualified Lexer
 import qualified Parser
+import qualified Type
 import qualified Data.Char
 
 import Parser(Term(..))
+import Type(Type(..))
 import Test.HUnit
 
 litBool = [
@@ -64,6 +66,17 @@ testEquivalences = [
     ("f x + f y", "(f x) + (f y)")
   ]
 
+testInference = [
+    ("true", TBool),
+    ("false", TBool),
+    ("1", TInt),
+    ("12", TInt),
+    ("123", TInt),
+    ("if true then 0 else 1", TInt),
+    ("x", TVar "x0"),
+    ("f", TVar "x0"),
+    ("f x", TFun (TVar "x0") (TVar "x1"))
+  ]
 
 testCompilation :: (String, Term) -> Test
 testCompilation (prog, expected) =
@@ -79,12 +92,23 @@ testComparaison (prog1, prog2) =
         (Parser.parse (Lexer.alexScanTokens prog1))
         (Parser.parse (Lexer.alexScanTokens prog2))
 
+testTypeInference :: (String, Type) -> Test
+testTypeInference (prog, ty) =
+  let term = Parser.parse (Lexer.alexScanTokens prog)
+   in TestLabel ("program '" ++ prog ++ "' has type '" ++ show ty ++ "'") $
+        TestCase $
+          case Type.infer Type.emptyContext term of
+            Just (_, inferedTy) -> assertEqual prog ty inferedTy
+            Nothing -> assertFailure "did not type checked"
+
 tests =
   TestList $ [
     TestLabel "testing (Parser.parse . Lexer.alexScanTokens)" $
       TestList (map testCompilation testCases),
     TestLabel "testing (parse prog1 == parse prog2)" $
-      TestList (map testComparaison testEquivalences)
+      TestList (map testComparaison testEquivalences),
+    TestLabel "testing (infer (parse prog))" $
+      TestList (map testTypeInference testInference)
   ]
 
 main :: IO ()
