@@ -47,10 +47,10 @@ variables =
   ]
 
 functions = [
-    ("let min = fun x -> fun y -> if x < y then x else y in max 3 5",
+    ("let min = fun x -> fun y -> if x < y then x else y in min 3 5",
       Let "min"
         (Abs "x" (Abs "y" (If (OpLT (Var "x") (Var "y")) (Var "x") (Var "y"))))
-        (App (App (Var "max") (LitInt 3)) (LitInt 5)))
+        (App (App (Var "min") (LitInt 3)) (LitInt 5)))
   ]
 
 testCases =
@@ -63,19 +63,34 @@ testEquivalences = [
     ("a * b * c", "(a * b) * c"),
     ("a + b * c", "a + (b * c)"),
     ("f x y z", "((f x) y) z"),
-    ("f x + f y", "(f x) + (f y)")
+    ("f x + f y", "(f x) + (f y)"),
+    ("let min = fun x -> fun y -> if x < y then x else y in min 2 3",
+     "let min = (fun x -> (fun y -> (if (x < y) then x else y))) in ((min 2) 3)")
   ]
 
 testInference = [
-    ("true", TBool),
-    ("false", TBool),
-    ("1", TInt),
-    ("12", TInt),
-    ("123", TInt),
-    ("if true then 0 else 1", TInt),
-    ("x", TVar "x0"),
-    ("f", TVar "x0"),
-    ("f x", TFun (TVar "x0") (TVar "x1"))
+    (Type.emptyContext, "true", TBool),
+    (Type.emptyContext, "false", TBool),
+    (Type.emptyContext, "1", TInt),
+    (Type.emptyContext, "12", TInt),
+    (Type.emptyContext, "123", TInt),
+    (Type.emptyContext, "3 - 2", TInt),
+    (Type.emptyContext, "3 + 2", TInt),
+    (Type.emptyContext, "3 * 2", TInt),
+    (Type.emptyContext, "3 / 2", TInt),
+    (Type.emptyContext, "3 < 2", TBool),
+    (Type.emptyContext, "3 = 2", TBool),
+    (Type.emptyContext, "if true then 0 else 1", TInt),
+    (Type.emptyContext, "fun x -> x", TFun (TVar "x0") (TVar "x0")),
+    (Type.emptyContext, "fun x -> true", TFun (TVar "x0") TBool),
+    (Type.emptyContext, "let x = true in 3", TInt),
+    (Type.emptyContext, "let min = fun x -> fun y -> if x < y then x else y in min 2 3", TInt),
+    (Type.singletonContext ("x", TInt), "x", TInt),
+    (Type.singletonContext ("f", TFun TInt TInt), "f", TFun TInt TInt),
+    (Type.singletonContext ("f", TFun TInt TInt), "f 3", TInt),
+    (Type.singletonContext ("x", TVar "x0"), "x - 1", TInt),
+    (Type.contextFromList[("x", TVar "x0"), ("y", TVar "x1")],
+      "x y", TVar "x2")
   ]
 
 testCompilation :: (String, Term) -> Test
@@ -92,13 +107,13 @@ testComparaison (prog1, prog2) =
         (Parser.parse (Lexer.alexScanTokens prog1))
         (Parser.parse (Lexer.alexScanTokens prog2))
 
-testTypeInference :: (String, Type) -> Test
-testTypeInference (prog, ty) =
+testTypeInference :: (Type.Context, String, Type) -> Test
+testTypeInference (ctxt, prog, ty) =
   let term = Parser.parse (Lexer.alexScanTokens prog)
    in TestLabel ("program '" ++ prog ++ "' has type '" ++ show ty ++ "'") $
         TestCase $
-          case Type.infer Type.emptyContext term of
-            Just (_, inferedTy) -> assertEqual prog ty inferedTy
+          case Type.infer ctxt term of
+            Just (subst, inferedTy) -> assertEqual (show subst) ty inferedTy
             Nothing -> assertFailure "did not type checked"
 
 tests =

@@ -4,6 +4,7 @@ module FreshName where
 
 import Control.Monad.State
 import Control.Monad.Identity
+import Data.List((\\))
 
 type Name = String
 
@@ -19,7 +20,14 @@ runNameGen :: NameGen a -> a
 runNameGen = runIdentity . runNameGenT
 
 instance (Monad m) => MonadNameGen (NameGenT m) where
-  fresh = NameGenT $ do t:ts <- get; put ts; return t
+  fresh = NameGenT $ do
+    t:ts <- get
+    put ts
+    return t
+
+runNameGenTWithout :: (Monad m) => [Name] -> NameGenT m a -> m a
+runNameGenTWithout xs (NameGenT x) =
+   evalStateT x (["x" ++ (show i) | i <- [(0::Int)..]] \\ xs)
 
 runNameGenT :: (Monad m) => NameGenT m a -> m a
 runNameGenT (NameGenT x) =
