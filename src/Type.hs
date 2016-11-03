@@ -31,6 +31,13 @@ singletonContext p = addContext p emptyContext
 contextFromList :: [(String, Type)] -> Context
 contextFromList = id
 
+extractTypeVars :: Context -> [String]
+extractTypeVars =
+  let extractVars (TVar x) = [x]
+      extractVars (TFun t1 t2) = extractVars t1 ++ extractVars t2
+      extractVars _ = []
+   in Data.List.concat . map (extractVars . snd)
+
 type Subst = [(String, Type)]
 
 emptySubst :: Subst
@@ -53,27 +60,21 @@ applyOnContext s = map (\(x, ty) -> (x, applyOnType s ty))
 concatSubst :: Subst -> Subst -> Subst
 concatSubst = (++)
 
+genFreshTVar :: Monad m => NameGenT m Type
+genFreshTVar = fresh >>= (return . TVar)
+
 unify :: Type -> Type -> Maybe Subst
-unify TInt TInt = Just emptySubst
-unify TBool TBool = Just emptySubst
-unify (TVar x) (TVar y) = if x == y then Just emptySubst else Nothing
 unify (TVar x) t = Just (singletonSubst (x, t))
 unify t (TVar x) = Just (singletonSubst (x, t))
-unify (TFun t1 t2) (TFun t1' t2') =
-  unify t1 t1' >>= \theta1 ->
-    unify (applyOnType theta1 t2) (applyOnType theta1 t2') >>= \theta2 ->
-      Just (concatSubst theta1 theta2)
-unify _ _ = Nothing
+unify (TFun t1 t2) (TFun t1' t2') = do
+  theta1 <- unify t1 t1'
+  theta2 <- unify (applyOnType theta1 t2) (applyOnType theta1 t2')
+  Just (concatSubst theta1 theta2)
+unify x y = if x == y then Just emptySubst else Nothing
 
 infer :: Context -> Term -> Maybe (Subst, Type)
-infer c e = runNameGenTWithout existingNames (impl c e)
-  where extractVars (TVar x) = [x]
-        extractVars (TFun t1 t2) = extractVars t1 ++ extractVars t2
-        extractVars _ = []
-
-        existingNames = Data.List.concat (map (extractVars . snd) c)
-
-        checkBinOpElements
+infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
+  where checkBinOpElements
             :: Type    -- ^ The type of the left hand side
             -> Type    -- ^ The type of the right hand side
             -> Type    -- ^ The type of the resulting expression
@@ -100,15 +101,13 @@ infer c e = runNameGenTWithout existingNames (impl c e)
             Just t -> return (emptySubst, t)
             Nothing -> lift Nothing
         impl c (Abs x e) = do
-          name <- fresh
-          let alpha = TVar name
+          alpha <- genFreshTVar
           (theta, tau) <- impl (addContext (x, alpha) c) e
           return (theta, TFun (applyOnType theta alpha) tau)
         impl c (App e1 e2) = do
           (theta1, tau1) <- impl c e1
           (theta2, tau2) <- impl (applyOnContext theta1 c) e2
-          name <- fresh
-          let beta = TVar name
+          beta <- genFreshTVar
           theta3 <- lift $ unify (applyOnType theta2 tau1) (TFun tau2 beta)
           return (theta1 `concatSubst` theta2 `concatSubst` theta3, applyOnType theta3 beta)
         impl c (LitInt _) = return (emptySubst, TInt)
@@ -137,8 +136,7 @@ infer c e = runNameGenTWithout existingNames (impl c e)
           (theta2, tau2) <- impl (addContext  (x, tau1) (applyOnContext theta1 c)) e2
           return (theta1 `concatSubst` theta2, tau2)
         impl c (LetRec x e1 e2) = do
-          name <- fresh
-          let alpha = TVar name
+          alpha <- genFreshTVar
           (theta1, tau1) <- impl (addContext (x, alpha) c) e1
           (theta2, tau2) <- impl (addContext (x, tau1) (applyOnContext theta1 c)) e2
           return (theta1 `concatSubst` theta2, tau2)

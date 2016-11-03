@@ -89,7 +89,7 @@ testInference = [
     (Type.singletonContext ("f", TFun TInt TInt), "f", TFun TInt TInt),
     (Type.singletonContext ("f", TFun TInt TInt), "f 3", TInt),
     (Type.singletonContext ("x", TVar "x0"), "x - 1", TInt),
-    (Type.contextFromList[("x", TVar "x0"), ("y", TVar "x1")],
+    (Type.contextFromList [("x", TVar "x0"), ("y", TVar "x1")],
       "x y", TVar "x2")
   ]
 
