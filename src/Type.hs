@@ -58,14 +58,24 @@ applyOnContext :: Subst -> Context -> Context
 applyOnContext s = map (\(x, ty) -> (x, applyOnType s ty))
 
 concatSubst :: Subst -> Subst -> Subst
-concatSubst = (++)
+concatSubst as bs = applyOnContext bs as ++ bs
 
 genFreshTVar :: Monad m => NameGenT m Type
 genFreshTVar = fresh >>= (return . TVar)
 
+typeContains :: String -> Type -> Bool
+typeContains x TBool = False
+typeContains x TInt = False
+typeContains x (TFun t1 t2) = (typeContains x t1) || (typeContains x t2)
+typeContains x (TVar y) = x == y
+
 unify :: Type -> Type -> Maybe Subst
-unify (TVar x) t = Just (singletonSubst (x, t))
-unify t (TVar x) = Just (singletonSubst (x, t))
+unify (TVar x) (TVar y) = Just $
+  if x == y then emptySubst else singletonSubst (x, TVar y)
+unify (TVar x) t =
+  if typeContains x t then Nothing else Just (singletonSubst (x, t))
+unify t (TVar x) =
+  if typeContains x t then Nothing else Just (singletonSubst (x, t))
 unify (TFun t1 t2) (TFun t1' t2') = do
   s1 <- unify t1 t1'
   s2 <- unify (applyOnType s1 t2) (applyOnType s1 t2')
@@ -91,7 +101,7 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
           let s1'' = s1 `cat` s1'
           (s2, tau2) <- impl (s1'' `app` c) e2
           s2' <- lift (unify tau2 t2)
-          return (s1'' `cat` s2 `cat` s2', t)
+          return (s1'' `cat` (s2 `cat` s2'), t)
 
         impl :: Context -> Term -> NameGenT Maybe (Subst, Type)
         impl c (Var x) = lift (fmap ((,) emptySubst) (lookupContext x c))
@@ -104,7 +114,7 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
           (s2, tau2) <- impl (s1 `app` c) e2
           beta <- genFreshTVar
           s3 <- lift $ unify (applyOnType s2 tau1) (TFun tau2 beta)
-          return (s1 `cat` s2 `cat` s3, applyOnType s3 beta)
+          return (s1 `cat` (s2 `cat` s3), applyOnType s3 beta)
         impl c (LitInt _) = return (emptySubst, TInt)
         impl c LitTrue = return (emptySubst, TBool)
         impl c LitFalse = return (emptySubst, TBool)
@@ -120,9 +130,10 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
             lift Nothing
           else do
             (theta1, tau1) <- impl (s `app` c) e1
-            (theta2, tau2) <- impl (theta1 `app` s `app` c) e2
+            (theta2, tau2) <- impl ((theta1 `app` s) `app` c) e2
             theta3 <- lift $ unify (applyOnType theta2 tau1) tau2
-            return (s `cat` theta1 `cat` theta2 `cat` theta3, applyOnType theta3 tau2)
+            return (s `cat` (theta1 `cat` (theta2 `cat` theta3)),
+              applyOnType theta3 tau2)
         impl c (Let x e1 e2) = do
           (theta1, tau1) <- impl c e1
           (theta2, tau2) <- impl (addContext  (x, tau1) (theta1 `app` c)) e2
@@ -130,5 +141,6 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
         impl c (LetRec x e1 e2) = do
           alpha <- genFreshTVar
           (theta1, tau1) <- impl (addContext (x, alpha) c) e1
-          (theta2, tau2) <- impl (addContext (x, tau1) (theta1 `app` c)) e2
-          return (theta1 `cat` theta2, tau2)
+          s <- lift (unify (applyOnType theta1 alpha) tau1)
+          (theta2, tau2) <- impl (s `app` (addContext (x, tau1) (theta1 `app` c))) e2
+          return (theta1 `cat` (s `cat` theta2), tau2)

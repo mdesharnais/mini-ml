@@ -3,6 +3,7 @@ module Main where
 import qualified Lexer
 import qualified Parser
 import qualified System.Environment
+import qualified Type
 
 compileFile :: String -> IO ()
 compileFile filename = do
