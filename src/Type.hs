@@ -88,20 +88,20 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
         app = applyOnContext
 
         checkBinOpElements
-            :: Type    -- ^ The type of the left hand side
-            -> Type    -- ^ The type of the right hand side
-            -> Type    -- ^ The type of the resulting expression
-            -> Context -- ^ Context in which the expressions are type-checked
-            -> Term    -- ^ Left hand side expression
-            -> Term    -- ^ Right hand side expression
-            -> NameGenT Maybe (Subst, Type)
+          :: Type    -- ^ The type of the left hand side
+          -> Type    -- ^ The type of the right hand side
+          -> Type    -- ^ The type of the resulting expression
+          -> Context -- ^ Context in which the expressions are type-checked
+          -> Term    -- ^ Left hand side expression
+          -> Term    -- ^ Right hand side expression
+          -> NameGenT Maybe (Subst, Type)
         checkBinOpElements t1 t2 t c e1 e2 = do
           (s1, tau1) <- impl c e1
           s1' <- lift (unify tau1 t1)
           let s1'' = s1 `cat` s1'
           (s2, tau2) <- impl (s1'' `app` c) e2
           s2' <- lift (unify tau2 t2)
-          return (s1'' `cat` (s2 `cat` s2'), t)
+          return (s1'' `cat` s2 `cat` s2', t)
 
         impl :: Context -> Term -> NameGenT Maybe (Subst, Type)
         impl c (Var x) = lift (fmap ((,) emptySubst) (lookupContext x c))
@@ -114,7 +114,7 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
           (s2, tau2) <- impl (s1 `app` c) e2
           beta <- genFreshTVar
           s3 <- lift $ unify (applyOnType s2 tau1) (TFun tau2 beta)
-          return (s1 `cat` (s2 `cat` s3), applyOnType s3 beta)
+          return (s1 `cat` s2 `cat` s3, applyOnType s3 beta)
         impl c (LitInt _) = return (emptySubst, TInt)
         impl c LitTrue = return (emptySubst, TBool)
         impl c LitFalse = return (emptySubst, TBool)
@@ -132,7 +132,7 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
             (theta1, tau1) <- impl (s `app` c) e1
             (theta2, tau2) <- impl ((theta1 `app` s) `app` c) e2
             theta3 <- lift $ unify (applyOnType theta2 tau1) tau2
-            return (s `cat` (theta1 `cat` (theta2 `cat` theta3)),
+            return (s `cat` theta1 `cat` theta2 `cat` theta3,
               applyOnType theta3 tau2)
         impl c (Let x e1 e2) = do
           (theta1, tau1) <- impl c e1
@@ -143,4 +143,4 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
           (theta1, tau1) <- impl (addContext (x, alpha) c) e1
           s <- lift (unify (applyOnType theta1 alpha) tau1)
           (theta2, tau2) <- impl (s `app` (addContext (x, tau1) (theta1 `app` c))) e2
-          return (theta1 `cat` (s `cat` theta2), tau2)
+          return (theta1 `cat` s `cat` theta2, tau2)
