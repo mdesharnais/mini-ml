@@ -32,24 +32,3 @@ runNameGenTWithout xs (NameGenT x) =
 runNameGenT :: (Monad m) => NameGenT m a -> m a
 runNameGenT (NameGenT x) =
    evalStateT x ["x" ++ (show i) | i <- [(0::Int)..]]
-
-foo :: NameGen String
-foo = do
-  n1 <- fresh
-  n2 <- fresh
-  return (n1 ++ " " ++ n2)
-
-bar :: NameGenT IO String
-bar = do
-  n1 <- fresh
-  n2 <- fresh
-  lift $ putStrLn "Test"
-  return (n1 ++ " " ++ n2)
-
-baz :: NameGenT Maybe String
-baz = do
-  n1 <- fresh
-  n2 <- fresh
-  lift (do
-    x <- Just "~~~"
-    return (n1 ++ x ++ n2))

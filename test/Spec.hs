@@ -86,6 +86,13 @@ testInference = [
     (Type.emptyContext, "let x = true in 3", TInt),
     (Type.emptyContext, "let min = fun x -> fun y -> if x < y then x else y in min 2 3", TInt),
     (Type.emptyContext, "let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3", TInt),
+    (Type.emptyContext, "let min = fun b -> fun x -> fun y -> if b then x else y in min true 2 3", TInt),
+    (Type.emptyContext, "let i = fun x -> x in if i true then i 1 else i 2", TInt),
+    (Type.emptyContext, "let foo = fun b -> if b then true else false in foo true", TBool),
+    (Type.emptyContext,
+      "let not = fun b -> if b then b else false in " ++
+      "let rec foo = fun b -> fun x -> fun y -> if b then x else foo (not b) y x in " ++
+      "foo false 1 1", TInt),
     (Type.emptyContext, "fun fix -> fun f -> f (fun y -> fix f y)",
       TFun (TFun (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5")) (TFun (TVar
       "x2") (TVar "x4"))) (TFun (TFun (TFun (TVar "x2") (TVar "x4")) (TVar
