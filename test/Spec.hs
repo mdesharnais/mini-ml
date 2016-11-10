@@ -1,11 +1,13 @@
+import qualified Interpreter
 import qualified Lexer
 import qualified Parser
 import qualified Type
 import qualified Data.Char
 
+import Interpreter(Value(..))
 import Parser(Term(..))
-import Type(Type(..))
 import Test.HUnit
+import Type(Type(..))
 
 litBool = [
   ("true", LitTrue),
@@ -113,6 +115,19 @@ testInference = [
       "x y", TVar "x2")
   ]
 
+interpretationTests = [
+    ("4 + 2", ConstInt 6),
+    ("4 - 2", ConstInt 2),
+    ("4 * 2", ConstInt 8),
+    ("4 / 2", ConstInt 2),
+    ("6 + 4 / 2", ConstInt 8),
+    ("2 * 3 + 4 / 2", ConstInt 8),
+    ("2 < 4", ConstBool True),
+    ("4 < 2", ConstBool False),
+    ("let f = fun x -> x in f 0", ConstInt 0),
+    ("let i = fun x -> x in if i true then i 1 else i 2", ConstInt 1)
+  ]
+
 testCompilation :: (String, Term) -> Test
 testCompilation (prog, expected) =
   TestLabel ("program is '" ++ prog ++ "'") $
@@ -136,6 +151,15 @@ testTypeInference (ctxt, prog, ty) =
             Just (subst, inferedTy) -> assertEqual (show subst) ty inferedTy
             Nothing -> assertFailure "did not type checked"
 
+testInterpreter :: (String, Value) -> Test
+testInterpreter (prog, val) =
+  let term = Parser.parse (Lexer.alexScanTokens prog)
+   in TestLabel ("program '" ++ prog ++ "' evaluate to '" ++ show val ++ "'") $
+        TestCase $
+          case Interpreter.eval [] term of
+            Just v -> assertEqual "" val v
+            Nothing -> assertFailure "evaluation went wrong"
+
 tests =
   TestList $ [
     TestLabel "testing (Parser.parse . Lexer.alexScanTokens)" $
@@ -143,7 +167,9 @@ tests =
     TestLabel "testing (parse prog1 == parse prog2)" $
       TestList (map testComparaison testEquivalences),
     TestLabel "testing (infer (parse prog))" $
-      TestList (map testTypeInference testInference)
+      TestList (map testTypeInference testInference),
+    TestLabel "testing (eval [] (parse prog))" $
+      TestList (map testInterpreter interpretationTests)
   ]
 
 main :: IO ()

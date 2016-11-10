@@ -17,7 +17,7 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   build-tools:         alex, happy
-  exposed-modules:     Lexer, Parser, Type, FreshName
+  exposed-modules:     Lexer, Parser, Type, FreshName, Interpreter
   build-depends:       base >= 4.7 && < 5
                      , array
                      , mtl
