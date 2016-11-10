@@ -4,7 +4,7 @@ import qualified Parser
 import qualified Type
 import qualified Data.Char
 
-import Interpreter(Value(..))
+import Interpreter(Value, valInt, valBool)
 import Parser(Term(..))
 import Test.HUnit
 import Type(Type(..))
@@ -116,16 +116,17 @@ testInference = [
   ]
 
 interpretationTests = [
-    ("4 + 2", ConstInt 6),
-    ("4 - 2", ConstInt 2),
-    ("4 * 2", ConstInt 8),
-    ("4 / 2", ConstInt 2),
-    ("6 + 4 / 2", ConstInt 8),
-    ("2 * 3 + 4 / 2", ConstInt 8),
-    ("2 < 4", ConstBool True),
-    ("4 < 2", ConstBool False),
-    ("let f = fun x -> x in f 0", ConstInt 0),
-    ("let i = fun x -> x in if i true then i 1 else i 2", ConstInt 1)
+    ("4 + 2", valInt 6),
+    ("4 - 2", valInt 2),
+    ("4 * 2", valInt 8),
+    ("4 / 2", valInt 2),
+    ("6 + 4 / 2", valInt 8),
+    ("2 * 3 + 4 / 2", valInt 8),
+    ("2 < 4", valBool True),
+    ("4 < 2", valBool False),
+    ("let f = fun x -> x in f 0", valInt 0),
+    ("let i = fun x -> x in if i true then i 1 else i 2", valInt 1),
+    ("let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3", valInt 6)
   ]
 
 testCompilation :: (String, Term) -> Test

@@ -71,16 +71,35 @@ ArithExp : Exp0 '+' Exp0      { OpAdd $1 $3 }
 
 Let :: { Term }
 Let : 'let' ID '=' Exp 'in' Exp         { Let $2 $4 $6 }
-    | 'let' 'rec' ID '=' Abs 'in' Exp   { LetRec $3 $5 $7 }
+    | 'let' 'rec' ID '=' Abs 'in' Exp   { Let $3 (App (Const constantFix) (Abs $3 $5)) $7 }
 
 If :: { Term }
 If : 'if' Exp 'then' Exp 'else' Exp     { If $2 $4 $6 }
 
 {
+data Name =
+  NString String |
+  NInt Integer |
+  NBool Bool
+  deriving (Eq, Show)
+
+data Constant = Constant { name :: Name, arity :: Integer, constr :: Bool }
+  deriving (Eq, Show)
+
+constantInt :: Integer -> Constant
+constantInt n = Constant { name = NInt n, arity = 0, constr = True }
+
+constantBool :: Bool -> Constant
+constantBool x = Constant { name = NBool x, arity = 0, constr = True }
+
+constantFix :: Constant
+constantFix = Constant { name = NString "fix", arity = 2, constr = False }
+
 data Term =
   Var String |
   Abs String Term |
   App Term Term |
+  Const Constant |
   LitInt Integer |
   LitTrue |
   LitFalse |
