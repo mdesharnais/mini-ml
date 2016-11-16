@@ -177,5 +177,9 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
           alpha <- genFreshTVar
           (theta1, tau1) <- impl (addContext (x, alpha) c) e1
           s <- lift (unify (applyOnType theta1 alpha) tau1)
-          (theta2, tau2) <- impl (s `app` (addContext (x, tau1) (theta1 `app` c))) e2
+          let theta1' = theta1 `app` c
+          let fv = freeVars tau1
+          let tyVars = fv \\ (extractTypeVars (s `app` theta1'))
+          let tau1' = Data.List.foldl (flip TSForall) (TSType tau1) tyVars
+          (theta2, tau2) <- impl (s `app` (addTySchemaToContext (x, tau1') theta1')) e2
           return (theta1 `cat` s `cat` theta2, tau2)
