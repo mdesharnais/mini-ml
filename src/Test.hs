@@ -17,6 +17,7 @@ data Expr =
   EOpEQ Expr Expr |
   EIf Expr Expr Expr |
   ELet Id Expr Expr |
+  ELetRec Id (Id, Expr) Expr |
   EAbs Id Expr |
   EApp Expr Expr
   deriving (Show)
@@ -40,7 +41,8 @@ data SimpleTerm =
 
 data Term =
   TVal AtomicTerm |
-  TLet Id SimpleTerm Term
+  TLet Id SimpleTerm Term |
+  TLetRec Id (Id, Term) Term
 
 -- Pretty print
 instance Show AtomicTerm where
@@ -62,7 +64,10 @@ instance Show SimpleTerm where
 
 instance Show Term where
   show (TVal x) = show x
-  show (TLet x e1 e2) = "let " ++ x ++ " = " ++ show e1 ++ " in\n" ++ show e2
+  show (TLet x e1 e2) =
+    "let " ++ x ++ " = " ++ show e1 ++ " in\n" ++ show e2
+  show (TLetRec x (y, e1) e2) =
+    "let rec " ++ x ++ " = " ++ show (STAbs y e1) ++ " in\n" ++ show e2
 
 -- Normal form
 
@@ -89,7 +94,13 @@ nf (EIf e1 e2 e3) s k = nf e1 s (\e1' -> do
   a <- fresh
   b <- k (ATVar a)
   return (TLet a (STIf e1' e2' e3') b))
-nf (ELet x e1 e2) s k = nf e1 s (\a -> nf e2 (\y -> if y == x then a else ATVar y) (return . TVal))
+nf (ELet x e1 e2) s k =
+  nf e1 s (\a -> nf e2 (\y -> if y == x then a else ATVar y) (return . TVal))
+nf (ELetRec x (y, e1) e2) s k = do
+  e1' <- nf e1 s (return . TVal)
+  a <- fresh
+  e2' <- nf e2 (\z -> ATVar (if z == x then a else z)) (return . TVal)
+  return (TLetRec a (y, e1') e2')
 nf (EAbs x e) s k = do
   a <- fresh
   b <- nf e s (return . TVal)
