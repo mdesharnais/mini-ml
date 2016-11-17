@@ -6,110 +6,110 @@ type Id = String
 
 -- Source language
 data Expr =
-  ELitInt Integer |
-  ELitBool Bool |
-  EVar Id |
-  EOpAdd Expr Expr |
-  EOpSub Expr Expr |
-  EOpMul Expr Expr |
-  EOpDiv Expr Expr |
-  EOpLT Expr Expr |
-  EOpEQ Expr Expr |
-  EIf Expr Expr Expr |
-  ELet Id Expr Expr |
-  ELetRec Id (Id, Expr) Expr |
-  EAbs Id Expr |
-  EApp Expr Expr
+  LitInt Integer |
+  LitBool Bool |
+  Var Id |
+  OpAdd Expr Expr |
+  OpSub Expr Expr |
+  OpMul Expr Expr |
+  OpDiv Expr Expr |
+  OpLT Expr Expr |
+  OpEQ Expr Expr |
+  If Expr Expr Expr |
+  Let Id Expr Expr |
+  LetRec Id (Id, Expr) Expr |
+  Abs Id Expr |
+  App Expr Expr
   deriving (Show)
 
--- Intermediate language
-data AtomicTerm =
-  ATLitInt Integer |
-  ATLitBool Bool |
-  ATVar Id
+-- Intermediate language in normal form
+data AtomicExpr =
+  ALitInt Integer |
+  ALitBool Bool |
+  AVar Id
 
-data SimpleTerm =
-  STOpAdd AtomicTerm AtomicTerm |
-  STOpSub AtomicTerm AtomicTerm |
-  STOpMul AtomicTerm AtomicTerm |
-  STOpDiv AtomicTerm AtomicTerm |
-  STOpLT AtomicTerm AtomicTerm |
-  STOpEQ AtomicTerm AtomicTerm |
-  STIf AtomicTerm Term Term |
-  STAbs Id Term |
-  STApp AtomicTerm AtomicTerm
+data ComplexExpr =
+  COpAdd AtomicExpr AtomicExpr |
+  COpSub AtomicExpr AtomicExpr |
+  COpMul AtomicExpr AtomicExpr |
+  COpDiv AtomicExpr AtomicExpr |
+  COpLT AtomicExpr AtomicExpr |
+  COpEQ AtomicExpr AtomicExpr |
+  CIf AtomicExpr ExprNF ExprNF |
+  CAbs Id ExprNF |
+  CApp AtomicExpr AtomicExpr
 
-data Term =
-  TVal AtomicTerm |
-  TLet Id SimpleTerm Term |
-  TLetRec Id (Id, Term) Term
+data ExprNF =
+  EVal AtomicExpr |
+  ELet Id ComplexExpr ExprNF |
+  ELetRec Id (Id, ExprNF) ExprNF
 
 -- Pretty print
-instance Show AtomicTerm where
-  show (ATLitInt n) = show n
-  show (ATLitBool n) = show n
-  show (ATVar x) = x
+instance Show AtomicExpr where
+  show (ALitInt n) = show n
+  show (ALitBool n) = show n
+  show (AVar x) = x
 
-instance Show SimpleTerm where
-  show (STOpAdd e1 e2) = show e1 ++ " + " ++ show e2
-  show (STOpSub e1 e2) = show e1 ++ " - " ++ show e2
-  show (STOpMul e1 e2) = show e1 ++ " * " ++ show e2
-  show (STOpDiv e1 e2) = show e1 ++ " / " ++ show e2
-  show (STOpLT e1 e2) = show e1 ++ " < " ++ show e2
-  show (STOpEQ e1 e2) = show e1 ++ " = " ++ show e2
-  show (STIf e1 e2 e3) =
+instance Show ComplexExpr where
+  show (COpAdd e1 e2) = show e1 ++ " + " ++ show e2
+  show (COpSub e1 e2) = show e1 ++ " - " ++ show e2
+  show (COpMul e1 e2) = show e1 ++ " * " ++ show e2
+  show (COpDiv e1 e2) = show e1 ++ " / " ++ show e2
+  show (COpLT e1 e2) = show e1 ++ " < " ++ show e2
+  show (COpEQ e1 e2) = show e1 ++ " = " ++ show e2
+  show (CIf e1 e2 e3) =
     "if " ++ show e1 ++ " then " ++ show e2 ++ " else " ++ show e3
-  show (STAbs x e) = "fun " ++ x ++ " -> " ++ show e
-  show (STApp e1 e2) = show e1 ++ " " ++ show e2
+  show (CAbs x e) = "fun " ++ x ++ " -> " ++ show e
+  show (CApp e1 e2) = show e1 ++ " " ++ show e2
 
-instance Show Term where
-  show (TVal x) = show x
-  show (TLet x e1 e2) =
+instance Show ExprNF where
+  show (EVal x) = show x
+  show (ELet x e1 e2) =
     "let " ++ x ++ " = " ++ show e1 ++ " in\n" ++ show e2
-  show (TLetRec x (y, e1) e2) =
-    "let rec " ++ x ++ " = " ++ show (STAbs y e1) ++ " in\n" ++ show e2
+  show (ELetRec x (y, e1) e2) =
+    "let rec " ++ x ++ " = " ++ show (CAbs y e1) ++ " in\n" ++ show e2
 
 -- Normal form
 
-nfBinOp :: Expr -> Expr -> (AtomicTerm -> AtomicTerm -> SimpleTerm) ->
-  (Id -> AtomicTerm) -> (AtomicTerm -> NameGen Term) -> NameGen Term
+nfBinOp :: Expr -> Expr -> (AtomicExpr -> AtomicExpr -> ComplexExpr) ->
+  (Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNF) -> NameGen ExprNF
 nfBinOp e1 e2 op s k = nf e1 s (\a -> nf e2 s (\b -> do
   c <- fresh
-  d <- k (ATVar c)
-  return (TLet c (op a b) d)))
+  d <- k (AVar c)
+  return (ELet c (op a b) d)))
 
-nf :: Expr -> (Id -> AtomicTerm) -> (AtomicTerm -> NameGen Term) -> NameGen Term
-nf (ELitInt n) s k = k (ATLitInt n)
-nf (ELitBool b) s k = k (ATLitBool b)
-nf (EVar x) s k = k (s x)
-nf (EOpAdd e1 e2) s k = nfBinOp e1 e2 STOpAdd s k
-nf (EOpSub e1 e2) s k = nfBinOp e1 e2 STOpSub s k
-nf (EOpMul e1 e2) s k = nfBinOp e1 e2 STOpMul s k
-nf (EOpDiv e1 e2) s k = nfBinOp e1 e2 STOpDiv s k
-nf (EOpLT e1 e2) s k = nfBinOp e1 e2 STOpLT s k
-nf (EOpEQ e1 e2) s k = nfBinOp e1 e2 STOpEQ s k
-nf (EIf e1 e2 e3) s k = nf e1 s (\e1' -> do
-  e2' <- nf e2 s (return . TVal)
-  e3' <- nf e3 s (return . TVal)
+nf :: Expr -> (Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNF) -> NameGen ExprNF
+nf (LitInt n) s k = k (ALitInt n)
+nf (LitBool b) s k = k (ALitBool b)
+nf (Var x) s k = k (s x)
+nf (OpAdd e1 e2) s k = nfBinOp e1 e2 COpAdd s k
+nf (OpSub e1 e2) s k = nfBinOp e1 e2 COpSub s k
+nf (OpMul e1 e2) s k = nfBinOp e1 e2 COpMul s k
+nf (OpDiv e1 e2) s k = nfBinOp e1 e2 COpDiv s k
+nf (OpLT e1 e2) s k = nfBinOp e1 e2 COpLT s k
+nf (OpEQ e1 e2) s k = nfBinOp e1 e2 COpEQ s k
+nf (If e1 e2 e3) s k = nf e1 s (\e1' -> do
+  e2' <- nf e2 s (return . EVal)
+  e3' <- nf e3 s (return . EVal)
   a <- fresh
-  b <- k (ATVar a)
-  return (TLet a (STIf e1' e2' e3') b))
-nf (ELet x e1 e2) s k =
-  nf e1 s (\a -> nf e2 (\y -> if y == x then a else ATVar y) (return . TVal))
-nf (ELetRec x (y, e1) e2) s k = do
-  e1' <- nf e1 s (return . TVal)
+  b <- k (AVar a)
+  return (ELet a (CIf e1' e2' e3') b))
+nf (Let x e1 e2) s k =
+  nf e1 s (\a -> nf e2 (\y -> if y == x then a else AVar y) (return . EVal))
+nf (LetRec x (y, e1) e2) s k = do
+  e1' <- nf e1 s (return . EVal)
   a <- fresh
-  e2' <- nf e2 (\z -> ATVar (if z == x then a else z)) (return . TVal)
-  return (TLetRec a (y, e1') e2')
-nf (EAbs x e) s k = do
+  e2' <- nf e2 (\z -> AVar (if z == x then a else z)) (return . EVal)
+  return (ELetRec a (y, e1') e2')
+nf (Abs x e) s k = do
   a <- fresh
-  b <- nf e s (return . TVal)
-  c <- k (ATVar a)
-  return (TLet a (STAbs x b) c)
-nf (EApp e1 e2) s k = nf e1 s (\a -> nf e2 s (\b -> do
+  b <- nf e s (return . EVal)
+  c <- k (AVar a)
+  return (ELet a (CAbs x b) c)
+nf (App e1 e2) s k = nf e1 s (\a -> nf e2 s (\b -> do
   c <- fresh
-  d <- k (ATVar c)
-  return (TLet c (STApp a b) d)))
+  d <- k (AVar c)
+  return (ELet c (CApp a b) d)))
 
-toNormalForm :: Expr -> Term
-toNormalForm e = runNameGen (nf e ATVar (return . TVal))
+toNormalForm :: Expr -> ExprNF
+toNormalForm e = runNameGen (nf e AVar (return . EVal))
