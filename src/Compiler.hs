@@ -1,4 +1,4 @@
-module Test where
+module Compiler where
 
 import Expr(Expr(..), Id)
 import FreshName

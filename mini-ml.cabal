@@ -23,7 +23,6 @@ library
                      , FreshName
                      , Interpreter
                      , Compiler
-                     , Test
                      , Expr
   build-depends:       base >= 4.7 && < 5
                      , array
