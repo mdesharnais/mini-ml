@@ -1,26 +1,7 @@
 module Test where
 
+import Expr(Expr(..), Id)
 import FreshName
-
-type Id = String
-
--- Source language
-data Expr =
-  LitInt Integer |
-  LitBool Bool |
-  Var Id |
-  OpAdd Expr Expr |
-  OpSub Expr Expr |
-  OpMul Expr Expr |
-  OpDiv Expr Expr |
-  OpLT Expr Expr |
-  OpEQ Expr Expr |
-  If Expr Expr Expr |
-  Let Id Expr Expr |
-  LetRec Id (Id, Expr) Expr |
-  Abs Id Expr |
-  App Expr Expr
-  deriving (Show)
 
 -- Intermediate language in normal form
 data AtomicExpr =
@@ -70,7 +51,6 @@ instance Show ExprNF where
     "let rec " ++ x ++ " = " ++ show (AAbs y e1) ++ " in\n" ++ show e2
 
 -- Normal form
-
 nfBinOp :: Expr -> Expr -> (AtomicExpr -> AtomicExpr -> ComplexExpr) ->
   (Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNF) -> NameGen ExprNF
 nfBinOp e1 e2 op s k = nf e1 s (\a -> nf e2 s (\b -> do

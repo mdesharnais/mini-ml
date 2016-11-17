@@ -4,14 +4,14 @@ import qualified Parser
 import qualified Type
 import qualified Data.Char
 
+import Expr(Expr(..))
 import Interpreter(Value(..))
-import Parser(Term(..))
 import Test.HUnit
 import Type(Type(..))
 
 litBool = [
-    ("true", LitTrue),
-    ("false", LitFalse)
+    ("true", LitBool True),
+    ("false", LitBool False)
   ]
 
 litInt min max =
@@ -113,7 +113,7 @@ interpretationTests = [
     ("let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3", ConstInt 6)
   ]
 
-testCompilation :: (String, Term) -> Test
+testCompilation :: (String, Expr) -> Test
 testCompilation (prog, expected) =
   TestLabel ("program is '" ++ prog ++ "'") $
     TestCase $

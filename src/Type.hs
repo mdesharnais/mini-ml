@@ -6,8 +6,8 @@ import qualified Data.Maybe
 
 import Control.Monad.Trans(lift)
 import Data.List((\\))
+import Expr(Expr(..))
 import FreshName
-import Parser(Term(..))
 
 data Type =
   TBool |
@@ -107,7 +107,7 @@ unify (TFun t1 t2) (TFun t1' t2') = do
   Just (concatSubst s1 s2)
 unify x y = if x == y then Just emptySubst else Nothing
 
-infer :: Context -> Term -> Maybe (Subst, Type)
+infer :: Context -> Expr -> Maybe (Subst, Type)
 infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
   where cat = concatSubst
         app = applyOnContext
@@ -117,8 +117,8 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
           -> Type    -- ^ The type of the right hand side
           -> Type    -- ^ The type of the resulting expression
           -> Context -- ^ Context in which the expressions are type-checked
-          -> Term    -- ^ Left hand side expression
-          -> Term    -- ^ Right hand side expression
+          -> Expr    -- ^ Left hand side expression
+          -> Expr    -- ^ Right hand side expression
           -> NameGenT Maybe (Subst, Type)
         checkBinOpElements t1 t2 t c e1 e2 = do
           (s1, tau1) <- impl c e1
@@ -128,7 +128,7 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
           s2' <- lift (unify tau2 t2)
           return (s1'' `cat` s2 `cat` s2', t)
 
-        impl :: Context -> Term -> NameGenT Maybe (Subst, Type)
+        impl :: Context -> Expr -> NameGenT Maybe (Subst, Type)
         impl c (Var x) = do
           let instanciate :: Monad m => Subst -> TypeSchema -> NameGenT m Type
               instanciate s (TSType ty) = return (applyOnType s ty)
@@ -149,8 +149,7 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
           s3 <- lift $ unify (applyOnType s2 tau1) (TFun tau2 beta)
           return (s1 `cat` s2 `cat` s3, applyOnType s3 beta)
         impl c (LitInt _) = return (emptySubst, TInt)
-        impl c LitTrue = return (emptySubst, TBool)
-        impl c LitFalse = return (emptySubst, TBool)
+        impl c (LitBool _) = return (emptySubst, TBool)
         impl c (OpMul e1 e2) = checkBinOpElements TInt TInt TInt c e1 e2
         impl c (OpDiv e1 e2) = checkBinOpElements TInt TInt TInt c e1 e2
         impl c (OpAdd e1 e2) = checkBinOpElements TInt TInt TInt c e1 e2
@@ -173,9 +172,9 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
           let tau1' = Data.List.foldl (flip TSForall) (TSType tau1) tyVars
           (theta2, tau2) <- impl (addTySchemaToContext (x, tau1') theta1') e2
           return (theta1 `cat` theta2, tau2)
-        impl c (LetRec x e1 e2) = do
+        impl c (LetRec x (y, e1) e2) = do
           alpha <- genFreshTVar
-          (theta1, tau1) <- impl (addContext (x, alpha) c) e1
+          (theta1, tau1) <- impl (addContext (x, alpha) c) (Abs y e1)
           s <- lift (unify (applyOnType theta1 alpha) tau1)
           let theta1' = theta1 `app` c
           let fv = freeVars tau1
