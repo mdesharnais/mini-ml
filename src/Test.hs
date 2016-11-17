@@ -26,7 +26,8 @@ data Expr =
 data AtomicExpr =
   ALitInt Integer |
   ALitBool Bool |
-  AVar Id
+  AVar Id |
+  AAbs Id ExprNF
 
 data ComplexExpr =
   COpAdd AtomicExpr AtomicExpr |
@@ -36,7 +37,6 @@ data ComplexExpr =
   COpLT AtomicExpr AtomicExpr |
   COpEQ AtomicExpr AtomicExpr |
   CIf AtomicExpr ExprNF ExprNF |
-  CAbs Id ExprNF |
   CApp AtomicExpr AtomicExpr
 
 data ExprNF =
@@ -49,6 +49,7 @@ instance Show AtomicExpr where
   show (ALitInt n) = show n
   show (ALitBool n) = show n
   show (AVar x) = x
+  show (AAbs x e) = "(fun " ++ x ++ " -> " ++ show e ++ ")"
 
 instance Show ComplexExpr where
   show (COpAdd e1 e2) = show e1 ++ " + " ++ show e2
@@ -59,7 +60,6 @@ instance Show ComplexExpr where
   show (COpEQ e1 e2) = show e1 ++ " = " ++ show e2
   show (CIf e1 e2 e3) =
     "if " ++ show e1 ++ " then " ++ show e2 ++ " else " ++ show e3
-  show (CAbs x e) = "fun " ++ x ++ " -> " ++ show e
   show (CApp e1 e2) = show e1 ++ " " ++ show e2
 
 instance Show ExprNF where
@@ -67,7 +67,7 @@ instance Show ExprNF where
   show (ELet x e1 e2) =
     "let " ++ x ++ " = " ++ show e1 ++ " in\n" ++ show e2
   show (ELetRec x (y, e1) e2) =
-    "let rec " ++ x ++ " = " ++ show (CAbs y e1) ++ " in\n" ++ show e2
+    "let rec " ++ x ++ " = " ++ show (AAbs y e1) ++ " in\n" ++ show e2
 
 -- Normal form
 
@@ -78,7 +78,10 @@ nfBinOp e1 e2 op s k = nf e1 s (\a -> nf e2 s (\b -> do
   d <- k (AVar c)
   return (ELet c (op a b) d)))
 
-nf :: Expr -> (Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNF) -> NameGen ExprNF
+nf :: Expr ->
+  (Id -> AtomicExpr) ->
+  (AtomicExpr -> NameGen ExprNF) ->
+  NameGen ExprNF
 nf (LitInt n) s k = k (ALitInt n)
 nf (LitBool b) s k = k (ALitBool b)
 nf (Var x) s k = k (s x)
@@ -102,10 +105,8 @@ nf (LetRec x (y, e1) e2) s k = do
   e2' <- nf e2 (\z -> AVar (if z == x then a else z)) (return . EVal)
   return (ELetRec a (y, e1') e2')
 nf (Abs x e) s k = do
-  a <- fresh
   b <- nf e s (return . EVal)
-  c <- k (AVar a)
-  return (ELet a (CAbs x b) c)
+  k (AAbs x b)
 nf (App e1 e2) s k = nf e1 s (\a -> nf e2 s (\b -> do
   c <- fresh
   d <- k (AVar c)
