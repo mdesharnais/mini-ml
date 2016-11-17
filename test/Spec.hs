@@ -1,8 +1,9 @@
+import qualified Compiler
+import qualified Data.Char
 import qualified Interpreter
 import qualified Lexer
 import qualified Parser
 import qualified Type
-import qualified Data.Char
 
 import Expr(Expr(..))
 import Interpreter(Value(..))
@@ -113,6 +114,62 @@ interpretationTests = [
     ("let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3", ConstInt 6)
   ]
 
+normalFormTests = [
+    ("a", "a"),
+
+    ("1", "1"),
+
+    ("fun x -> x","(fun x -> x)"),
+
+    ("1 + 2",
+     "let x0 = 1 + 2 in\nx0"),
+
+    ("1 + 2 + 3",
+     "let x0 = 1 + 2 in\nlet x1 = x0 + 3 in\nx1"),
+
+    ("1 + 2 + 3 + 4",
+     "let x0 = 1 + 2 in\nlet x1 = x0 + 3 in\nlet x2 = x1 + 4 in\nx2"),
+
+    ("(fun x -> x) true",
+     "let x0 = (fun x -> x) True in\nx0"),
+
+    ("f x y z",
+     "let x0 = f x in\nlet x1 = x0 y in\nlet x2 = x1 z in\nx2"),
+
+    ("(fun x -> x) (fun x -> x) true",
+     "let x0 = (fun x -> x) (fun x -> x) in\nlet x1 = x0 True in\nx1"),
+
+    ("let a = 1 in let b = 2 in a * b",
+     "let x0 = 1 * 2 in\nx0"),
+
+    ("let f = fun x -> x in f 1",
+     "let x0 = (fun x -> x) 1 in\nx0"),
+
+    ("let a = 1 in let b = 2 in 3 + a * b",
+     "let x0 = 1 * 2 in\nlet x1 = 3 + x0 in\nx1"),
+
+    ("if a then b else c",
+     "let x0 = if a then b else c in\nx0"),
+
+    ("if a then f 1 else f 2",
+     "let x2 = if a then let x0 = f 1 in\nx0 else let x1 = f 2 in\nx1 in\nx2"),
+
+    ("let f = fun x -> if x then 1 else 2 in f true",
+     "let x1 = (fun x -> let x0 = if x then 1 else 2 in\nx0) True in\nx1"),
+
+    ("let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3",
+     "let rec x5 = (fun n -> " ++
+       "let x0 = n = 0 in\n" ++
+       "let x4 = if x0 then 0 else " ++
+         "let x1 = n - 1 in\n" ++
+         "let x2 = sum x1 in\n" ++
+         "let x3 = n + x2 in\n" ++
+         "x3 in\n" ++
+         "x4) in\n" ++
+     "let x6 = x5 3 in\n" ++
+     "x6")
+  ]
+
 testCompilation :: (String, Expr) -> Test
 testCompilation (prog, expected) =
   TestLabel ("program is '" ++ prog ++ "'") $
@@ -145,6 +202,13 @@ testInterpreter (prog, val) =
             Just v -> assertEqual "" val v
             Nothing -> assertFailure "evaluation went wrong"
 
+testNormalForm :: (String, String) -> Test
+testNormalForm (prog, nf) =
+  let term = Parser.parse (Lexer.alexScanTokens prog)
+      normForm = Compiler.toNormalForm term
+   in TestLabel ("'" ++ prog ++ "' has normal form '" ++ nf ++ "'") $
+        TestCase $ assertEqual "" nf (show normForm)
+
 tests =
   TestList $ [
     TestLabel "testing (Parser.parse . Lexer.alexScanTokens)" $
@@ -154,7 +218,9 @@ tests =
     TestLabel "testing (infer (parse prog))" $
       TestList (map testTypeInference testInference),
     TestLabel "testing (eval [] (parse prog))" $
-      TestList (map testInterpreter interpretationTests)
+      TestList (map testInterpreter interpretationTests),
+    TestLabel "testing (toNormalForm (parse prog))" $
+      TestList (map testNormalForm normalFormTests)
   ]
 
 main :: IO ()

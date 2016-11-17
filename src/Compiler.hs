@@ -78,11 +78,11 @@ nf (If e1 e2 e3) s k = nf e1 s (\e1' -> do
   b <- k (AVar a)
   return (ELet a (CIf e1' e2' e3') b))
 nf (Let x e1 e2) s k =
-  nf e1 s (\a -> nf e2 (\y -> if y == x then a else AVar y) (return . EVal))
+  nf e1 s (\a -> nf e2 (\y -> if y == x then a else s y) (return . EVal))
 nf (LetRec x (y, e1) e2) s k = do
   e1' <- nf e1 s (return . EVal)
   a <- fresh
-  e2' <- nf e2 (\z -> AVar (if z == x then a else z)) (return . EVal)
+  e2' <- nf e2 (\z -> if z == x then AVar a else s z) (return . EVal)
   return (ELetRec a (y, e1') e2')
 nf (Abs x e) s k = do
   b <- nf e s (return . EVal)
