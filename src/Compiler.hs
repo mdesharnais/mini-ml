@@ -114,11 +114,11 @@ nf (If e1 e2 e3) s k = nf e1 s (\e1' -> do
   return (ELet a (CIf e1' e2' e3') b))
 nf (Let x e1 e2) s k =
   nf e1 s (\a -> nf e2 (\y -> if y == x then a else s y) (return . EVal))
-nf (LetRec x (y, e1) e2) s k = do
+nf (LetRec f (x, e1) e2) s k = do
   a <- fresh
   e1' <- nf e1 s (return . EVal)
-  e2' <- nf e2 (\z -> if z == x then AVar a else s z) (return . EVal)
-  return (ELetRec a (y, e1') e2')
+  e2' <- nf e2 (\y -> if y == f then AVar a else s y) (return . EVal)
+  return (ELetRec a (x, e1') e2')
 nf (Abs x e) s k = do
   b <- nf e s (return . EVal)
   k (AAbs x b)

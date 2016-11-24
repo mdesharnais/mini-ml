@@ -5,10 +5,10 @@ stack build
 
 case $1 in
   run)
-    echo $2 | stack exec mini-ml-exe | lli-3.5
+    echo "$2" | stack exec mini-ml-exe | lli-3.5
     ;;
   show)
-    echo $2 | stack exec mini-ml-exe
+    echo "$2" | stack exec mini-ml-exe
     ;;
 esac
 
