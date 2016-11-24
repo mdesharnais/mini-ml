@@ -127,8 +127,11 @@ nf (App e1 e2) s k = nf e1 s (\e1' -> nf e2 s (\e2' -> do
   d <- k (AVar a)
   return (ELet a (CApp e1' e2') d)))
 
+toNormalFormM :: Expr -> NameGen ExprNFAbs
+toNormalFormM e = nf e AVar (return . EVal)
+
 toNormalForm :: Expr -> ExprNFAbs
-toNormalForm e = runNameGen (nf e AVar (return . EVal))
+toNormalForm = runNameGen . toNormalFormM
 
 -- Normal form -> normal form with closure
 
