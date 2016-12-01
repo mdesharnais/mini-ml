@@ -1,73 +1,132 @@
 module Compiler.Llvm(compile) where
 
-import qualified Parser
-import qualified Lexer
+import qualified Data.List
+import qualified Data.Tuple
 
 import Compiler
+import Control.Monad.Trans(lift)
+import Data.List.NonEmpty(NonEmpty(..))
 import FreshName
 
-compile e = unlines [
-    "declare i32 @printf(i8*, ...)",
-    "@.str = private unnamed_addr constant [4 x i8] c\"%d\\0A\\00\"",
-    "define i32 @main() {",
-    compileExpr e,
-    "ret i32 0",
-    "}"
-  ]
-
 type Id = String
+type Label = Id
+type Register = Id
 
 data Value = VId Id | VInt Integer
 
 data Instr =
-  Add Value Value |
-  Sub Value Value |
-  Mul Value Value |
-  Udiv Value Value
+  Add   Id Value Value |
+  Sub   Id Value Value |
+  Mul   Id Value Value |
+  Div   Id Value Value |
+  CmpLT Id Value Value |
+  CmpEQ Id Value Value |
+  Cast  Id Value |
+  Phi   Id [(Label, Value)] |
+  Br    Label |
+  Cbr   Value Label Label |
+  Lbl   Label
 
-data Terminator =
-  Br Id
---  Ret Value
---  Switch ...
+type Subst = Id -> Value
 
-type Stmt = (Id, Instr)
-type Block = (Id, [Stmt], Terminator)
-type Function = (Id, [Block])
+instance Show Value where
+  show (VId x) = x
+  show (VInt n) = show n
 
--- comp_ :: Exp -> State FreshName LLVMVal
-compileAt :: AtomicExprClosure -> String
-compileAt (ACLitInt n) = show n
-compileAt (ACLitBool True) = "1"
-compileAt (ACLitBool False) = "0"
-compileAt (ACVar x) = "%" ++ x
-compileAt _ = undefined
+instance Show Instr where
+  show (Add x e1 e2) = "  " ++ x ++ " = add i64 " ++ show e1 ++ ", " ++ show e2
+  show (Sub x e1 e2) = "  " ++ x ++ " = sub i64 " ++ show e1 ++ ", " ++ show e2
+  show (Mul x e1 e2) = "  " ++ x ++ " = mul i64 " ++ show e1 ++ ", " ++ show e2
+  show (Div x e1 e2) = "  " ++ x ++ " = udiv i64 " ++ show e1 ++ ", " ++ show e2
+  show (CmpLT x e1 e2) = "  " ++ x ++ " = icmp ult i64 " ++ show e1 ++ ", " ++ show e2
+  show (CmpEQ x e1 e2) = "  " ++ x ++ " = icmp eq i64 " ++ show e1 ++ ", " ++ show e2
+  show (Cast x e) = "  " ++ x ++ " = zext i1 " ++ show e ++ " to i64"
+  show (Phi x ys) = "  " ++ x ++ " = phi i64 " ++
+    concat (Data.List.intersperse ", "
+      (map (\(y, z) -> "[" ++ show z ++ ", %" ++ y ++ "]") ys))
+  show (Br lbl) = "  br label %" ++ lbl
+  show (Cbr x thenLabel elseLabel) =
+    "  br i1 " ++ show x ++ ", label %" ++ thenLabel ++ ", label %" ++ elseLabel
+  show (Lbl x) = x ++ ":"
 
-compAt = compileAt
+freshVarName :: NameGen Id
+freshVarName = do
+  a <- fresh
+  return ("%" ++ a)
 
--- -> [Stmt]
-compileCo :: ComplexExprClosure -> String
-compileCo (COpAdd e1 e2) =  "add i32 "     ++ compAt e1 ++ ", " ++ compAt e2
-compileCo (COpSub e1 e2) =  "sub i32 "     ++ compAt e1 ++ ", " ++ compAt e2
-compileCo (COpMul e1 e2) =  "mul i32 "     ++ compAt e1 ++ ", " ++ compAt e2
-compileCo (COpDiv e1 e2) = "udiv i32 "     ++ compAt e1 ++ ", " ++ compAt e2
---compileCo (COpLT  e1 e2) = "icmp ule i32 " ++ compAt e1 ++ ", " ++ compAt e2
---compileCo (COpEQ  e1 e2) = "icmp eq  i32 " ++ compAt e1 ++ ", " ++ compAt e2
-compileCo _ = undefined
+freshLabelName :: NameGen Label
+freshLabelName = fresh
 
-genPrintIntVar :: String -> String
-genPrintIntVar x =
-  "call i32 (i8*, ...)* @printf(" ++
-    "i8* getelementptr inbounds ([4 x i8]* @.str, i32 0, i32 0), " ++
-    "i32 " ++ x ++
-  ")"
+compileAt :: AtomicExprClosure -> Subst -> Value
+compileAt (ACLitInt n) s = VInt n
+compileAt (ACLitBool True) s = VInt 1
+compileAt (ACLitBool False) s = VInt 0
+compileAt (ACVar x) s = s x
+compileAt _ _ = undefined
 
--- -> ([Block], [Function])
-compileExpr :: ExprNFClosure -> String
-compileExpr (EVal x)  = genPrintIntVar (compileAt x)
-compileExpr (ELet x e1 e2) =
-  "%" ++ x ++ " = " ++ compileCo e1 ++ "\n" ++ compileExpr e2
-compileExpr _ = undefined
+compileOp c e1 e2 s k = do
+  alpha <- freshVarName
+  let stmt = c alpha (compileAt e1 s) (compileAt e2 s)
+  stmts <- k (VId alpha)
+  return (stmt : stmts)
 
+addCast k x = do
+  alpha <- freshVarName
+  let stmt = Cast alpha x
+  stmts <- k (VId alpha)
+  return (stmt : stmts)
 
--- -> Function
--- compile
+compileCo :: ComplexExprClosure -> Subst
+        -> (Value -> NameGen [Instr])
+        -> NameGen [Instr]
+compileCo (COpAdd e1 e2) s k = compileOp Add   e1 e2 s k
+compileCo (COpSub e1 e2) s k = compileOp Sub   e1 e2 s k
+compileCo (COpMul e1 e2) s k = compileOp Mul   e1 e2 s k
+compileCo (COpDiv e1 e2) s k = compileOp Div   e1 e2 s k
+compileCo (COpLT e1 e2)  s k = compileOp CmpLT e1 e2 s (addCast k)
+compileCo (COpEQ e1 e2)  s k = compileOp CmpEQ e1 e2 s (addCast k)
+compileCo (CIf b e1 e2)  s k = do
+  thenLabel <- freshLabelName
+  elseLabel <- freshLabelName
+  afterLabel <- freshLabelName
+  alpha <- freshVarName
+  beta <- freshVarName
+  gamma <- freshVarName
+  let stmt0 = CmpEQ alpha (VInt 0) (compileAt b s)
+  let stmt1 = Cbr (VId alpha) thenLabel elseLabel
+  let stmt2 = Lbl thenLabel
+  let stmt3 = Br afterLabel
+  let stmt4 = Lbl elseLabel
+  let stmt5 = Br afterLabel
+  let stmt6 = Lbl afterLabel
+  (
+    fmap (\xs -> stmt0 : stmt1 : stmt2 : xs) (compileExpr e1 s (\e1' ->
+    fmap (\xs -> stmt3 : stmt4 : xs) (compileExpr e2 s (\e2' ->
+    fmap (\xs -> stmt5 : stmt6 : Phi gamma [(thenLabel, e1'), (elseLabel, e2')] : xs) (k (VId gamma)))))))
+
+compileExpr :: ExprNFClosure -> Subst
+        -> (Value -> NameGen [Instr])
+        -> NameGen [Instr]
+compileExpr (EVal x) s k  = k (compileAt x s)
+compileExpr (ELet x e1 e2) s k =
+  compileCo e1 s (\e1' ->
+  compileExpr e2 (\y -> if y == x then e1' else s y) k)
+compileExpr _ _ _ = undefined
+
+compile :: ExprNFClosure -> String
+compile e =
+  let k = \result -> return [Add "%result" (VInt 0) result] in
+  let instrs = runNameGen (compileExpr e VId k) in
+  let toString [] = ""
+      toString (x : xs) = show x ++ "\n" ++ toString xs in
+  unlines [
+      "declare i32 @printf(i8*, ...)",
+      "@.str = private unnamed_addr constant [4 x i8] c\"%d\\0A\\00\"",
+      "define i32 @main() {",
+      toString instrs,
+      "call i32 (i8*, ...)* @printf(",
+        "i8* getelementptr inbounds ([4 x i8]* @.str, i32 0, i32 0), ",
+        "i64 %result)",
+      "ret i32 0",
+      "}"
+    ]
