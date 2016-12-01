@@ -30,9 +30,9 @@ import Lexer
   INT           { (_, TLitInt $$) }
   ID            { (_, TId $$) }
 
+%nonassoc '<' '='
 %left '+' '-'
 %left '*' '/'
-%nonassoc '<' '='
 %%
 
 Exp :: { Expr }

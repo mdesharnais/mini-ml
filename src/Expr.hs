@@ -23,12 +23,12 @@ instance Show Expr where
   show (LitInt n) = show n
   show (LitBool b) = show b
   show (Var x) = x
-  show (OpAdd e1 e2) = show e1 ++ " + " ++ show e2
-  show (OpSub e1 e2) = show e1 ++ " - " ++ show e2
-  show (OpMul e1 e2) = show e1 ++ " * " ++ show e2
-  show (OpDiv e1 e2) = show e1 ++ " / " ++ show e2
-  show (OpLT e1 e2) = show e1 ++ " < " ++ show e2
-  show (OpEQ e1 e2) = show e1 ++ " = " ++ show e2
+  show (OpAdd e1 e2) = "(" ++ show e1 ++ " + " ++ show e2 ++ ")"
+  show (OpSub e1 e2) = "(" ++ show e1 ++ " - " ++ show e2 ++ ")"
+  show (OpMul e1 e2) = "(" ++ show e1 ++ " * " ++ show e2 ++ ")"
+  show (OpDiv e1 e2) = "(" ++ show e1 ++ " / " ++ show e2 ++ ")"
+  show (OpLT e1 e2)  = "(" ++ show e1 ++ " < " ++ show e2 ++ ")"
+  show (OpEQ e1 e2)  = "(" ++ show e1 ++ " = " ++ show e2 ++ ")"
   show (If e1 e2 e3) =
     "if " ++ show e1 ++ " then " ++ show e2 ++ " else " ++ show e3
   show (Let x e1 e2) =

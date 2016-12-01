@@ -36,7 +36,9 @@ functions = [
     ("let min = fun x -> fun y -> if x < y then x else y in min 3 5",
       Let "min"
         (Abs "x" (Abs "y" (If (OpLT (Var "x") (Var "y")) (Var "x") (Var "y"))))
-        (App (App (Var "min") (LitInt 3)) (LitInt 5)))
+        (App (App (Var "min") (LitInt 3)) (LitInt 5))),
+    ("1 * 2 < 3 * 4",
+      OpLT (OpMul (LitInt 1) (LitInt 2)) (OpMul (LitInt 3) (LitInt 4)))
   ]
 
 testCases =
@@ -50,6 +52,7 @@ testEquivalences = [
     ("a + b * c", "a + (b * c)"),
     ("f x y z", "((f x) y) z"),
     ("f x + f y", "(f x) + (f y)"),
+    ("a * b < c * d", "(a * b) < (c * d)"),
     ("let min = fun x -> fun y -> if x < y then x else y in min 2 3",
      "let min = (fun x -> (fun y -> (if (x < y) then x else y))) in ((min 2) 3)")
   ]
