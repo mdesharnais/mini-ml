@@ -148,6 +148,13 @@ normalFormTests = [
     ("let f = fun x -> x in f 1",
      "let x0 = (fun x -> x) 1 in\nx0"),
 
+    ("let f = fun x -> x in f 1 + f 2",
+     "let x0 = (fun x -> x)in\n" ++
+     "let x1 = x0 1 in\n" ++
+     "let x2 = x0 2 in\n" ++
+     "let x3 = x1 + x2 in\n" ++
+     "x3"),
+
     ("let a = 1 in let b = 2 in 3 + a * b",
      "let x0 = 1 * 2 in\nlet x1 = 3 + x0 in\nx1"),
 
