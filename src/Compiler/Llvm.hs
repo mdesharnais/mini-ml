@@ -8,6 +8,8 @@ import Control.Monad.Trans(lift)
 import Data.List.NonEmpty(NonEmpty(..))
 import FreshName
 
+-- Eventually consider to switch to libgc
+
 type Id = String
 type Label = Id
 type Register = Id
@@ -57,7 +59,7 @@ freshVarName = do
 freshLabelName :: NameGen Label
 freshLabelName = fresh
 
-compileAt :: AtomicExprClosure -> Subst -> Value
+compileAt :: AtomicExprCl -> Subst -> Value
 compileAt (ACLitInt n) s = VInt n
 compileAt (ACLitBool True) s = VInt 1
 compileAt (ACLitBool False) s = VInt 0
@@ -76,44 +78,42 @@ addCast k x = do
   stmts <- k (VId alpha)
   return (stmt : stmts)
 
-compileCo :: ComplexExprClosure -> Subst
+compileCo :: ComplexExprCl -> Subst
         -> (Value -> NameGen [Instr])
         -> NameGen [Instr]
-compileCo (COpAdd e1 e2) s k = compileOp Add   e1 e2 s k
-compileCo (COpSub e1 e2) s k = compileOp Sub   e1 e2 s k
-compileCo (COpMul e1 e2) s k = compileOp Mul   e1 e2 s k
-compileCo (COpDiv e1 e2) s k = compileOp Div   e1 e2 s k
-compileCo (COpLT e1 e2)  s k = compileOp CmpLT e1 e2 s (addCast k)
-compileCo (COpEQ e1 e2)  s k = compileOp CmpEQ e1 e2 s (addCast k)
-compileCo (CIf b e1 e2)  s k = do
-  thenLabel <- freshLabelName
-  elseLabel <- freshLabelName
-  afterLabel <- freshLabelName
+compileCo (CCOpAdd e1 e2) s k = compileOp Add   e1 e2 s k
+compileCo (CCOpSub e1 e2) s k = compileOp Sub   e1 e2 s k
+compileCo (CCOpMul e1 e2) s k = compileOp Mul   e1 e2 s k
+compileCo (CCOpDiv e1 e2) s k = compileOp Div   e1 e2 s k
+compileCo (CCOpLT e1 e2)  s k = compileOp CmpLT e1 e2 s (addCast k)
+compileCo (CCOpEQ e1 e2)  s k = compileOp CmpEQ e1 e2 s (addCast k)
+compileCo (CCIf b e1 e2)  s k = do
   alpha <- freshVarName
+  label <- freshLabelName
+  let thenLabel = label ++ "_then"
+  let elseLabel = label ++ "_else"
   beta <- freshVarName
   gamma <- freshVarName
   let stmt0 = CmpEQ alpha (VInt 0) (compileAt b s)
   let stmt1 = Cbr (VId alpha) thenLabel elseLabel
   let stmt2 = Lbl thenLabel
-  let stmt3 = Br afterLabel
+  let stmt3 = Br label
   let stmt4 = Lbl elseLabel
-  let stmt5 = Br afterLabel
-  let stmt6 = Lbl afterLabel
+  let stmt5 = Br label
+  let stmt6 = Lbl label
   (
     fmap (\xs -> stmt0 : stmt1 : stmt2 : xs) (compileExpr e1 s (\e1' ->
     fmap (\xs -> stmt3 : stmt4 : xs) (compileExpr e2 s (\e2' ->
     fmap (\xs -> stmt5 : stmt6 : Phi gamma [(thenLabel, e1'), (elseLabel, e2')] : xs) (k (VId gamma)))))))
+compileCo _ _ _ = undefined
 
-compileExpr :: ExprNFClosure -> Subst
-        -> (Value -> NameGen [Instr])
-        -> NameGen [Instr]
-compileExpr (EVal x) s k  = k (compileAt x s)
-compileExpr (ELet x e1 e2) s k =
+compileExpr :: ExprNFCl -> Subst -> (Value -> NameGen [Instr]) -> NameGen [Instr]
+compileExpr (ECVal x) s k  = k (compileAt x s)
+compileExpr (ECLet x e1 e2) s k =
   compileCo e1 s (\e1' ->
   compileExpr e2 (\y -> if y == x then e1' else s y) k)
-compileExpr _ _ _ = undefined
 
-compile :: ExprNFClosure -> String
+compile :: ExprNFCl -> String
 compile e =
   let k = \result -> return [Add "%result" (VInt 0) result] in
   let instrs = runNameGen (compileExpr e VId k) in

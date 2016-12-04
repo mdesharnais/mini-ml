@@ -122,7 +122,9 @@ normalFormTests = [
 
     ("1", "1"),
 
-    ("fun x -> x","(fun x -> x)"),
+    ("fun x -> x",
+     "let x0 = (fun x -> x) in\n" ++
+     "x0"),
 
     ("1 + 2",
      "let x0 = 1 + 2 in\nx0"),
@@ -134,22 +136,30 @@ normalFormTests = [
      "let x0 = 1 + 2 in\nlet x1 = x0 + 3 in\nlet x2 = x1 + 4 in\nx2"),
 
     ("(fun x -> x) true",
-     "let x0 = (fun x -> x) True in\nx0"),
+     "let x0 = (fun x -> x) in\n" ++
+     "let x1 = x0 True in\n" ++
+     "x1"),
 
     ("f x y z",
      "let x0 = f x in\nlet x1 = x0 y in\nlet x2 = x1 z in\nx2"),
 
     ("(fun x -> x) (fun x -> x) true",
-     "let x0 = (fun x -> x) (fun x -> x) in\nlet x1 = x0 True in\nx1"),
+     "let x0 = (fun x -> x) in\n" ++
+     "let x1 = (fun x -> x) in\n" ++
+     "let x2 = x0 x1 in\n" ++
+     "let x3 = x2 True in\n" ++
+     "x3"),
 
     ("let a = 1 in let b = 2 in a * b",
      "let x0 = 1 * 2 in\nx0"),
 
     ("let f = fun x -> x in f 1",
-     "let x0 = (fun x -> x) 1 in\nx0"),
+     "let x0 = (fun x -> x) in\n" ++
+     "let x1 = x0 1 in\n" ++
+     "x1"),
 
     ("let f = fun x -> x in f 1 + f 2",
-     "let x0 = (fun x -> x)in\n" ++
+     "let x0 = (fun x -> x) in\n" ++
      "let x1 = x0 1 in\n" ++
      "let x2 = x0 2 in\n" ++
      "let x3 = x1 + x2 in\n" ++
@@ -165,22 +175,30 @@ normalFormTests = [
      "let x0 = if a then let x1 = f 1 in\nx1 else let x2 = f 2 in\nx2 in\nx0"),
 
     ("let f = fun x -> if x then 1 else 2 in f true",
-     "let x1 = (fun x -> let x0 = if x then 1 else 2 in\nx0) True in\nx1"),
+     "let x0 = (fun x -> " ++
+        "let x1 = if x then 1 else 2 in\n" ++
+        "x1) in\n" ++
+     "let x2 = x0 True in\n" ++
+     "x2"),
 
     ("let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3",
      "let rec x0 = (fun n -> " ++
        "let x1 = n = 0 in\n" ++
        "let x2 = if x1 then 0 else " ++
          "let x3 = n - 1 in\n" ++
-         "let x4 = sum x3 in\n" ++
+         "let x4 = x0 x3 in\n" ++
          "let x5 = n + x4 in\n" ++
          "x5 in\n" ++
-         "x2) in\n" ++
+       "x2) in\n" ++
      "let x6 = x0 3 in\n" ++
      "x6"),
 
     ("let x = 5 in let f = fun y -> x + y in f 3",
-     "let x1 = (fun y -> let x0 = 5 + y in\nx0) 3 in\nx1")
+     "let x0 = (fun y -> " ++
+        "let x1 = 5 + y in\n" ++
+        "x1) in\n" ++
+     "let x2 = x0 3 in\n" ++
+     "x2")
   ]
 
 fvTests = [
@@ -188,21 +206,38 @@ fvTests = [
     ("fun x -> y", ["y"]),
     ("fun x -> x + y", ["y"]),
     ("let x = 2 + 3 in x", []),
-    ("let x = 5 in let f = fun y -> x + y in f 3", [])
+    ("let x = 5 in let f = fun y -> x + y in f 3", []),
+    ("fun n -> if n = 0 then 0 else n + sum (n - 1)", ["sum"])
   ]
 
 closureTests = [
     ("let x = 5 in let f = fun y -> x + y in f 3",
-     "let x1 = Closure (fun env -> fun y -> " ++
-        "let x0 = 5 + y in\nx0, []) 3 in\n" ++
-      "x1"),
+     "let x0 = Closure (fun env -> fun y -> " ++
+        "let x1 = 5 + y in\n" ++
+        "x1, []) in\n" ++
+     "let x2 = x0 3 in\n" ++
+     "x2"),
 
     ("let x = 5 + 3 in let f = fun y -> x + y in f 3",
      "let x0 = 5 + 3 in\n" ++
-     "let x2 = Closure (fun env -> fun y -> " ++
-        "let x1 = env.0 + y in\n" ++
-        "x1, [x0]) 3 in\n" ++
-      "x2")
+     "let x1 = Closure (fun env -> fun y -> " ++
+        "let x2 = env.0 + y in\n" ++
+        "x2, [x0]) in\n" ++
+     "let x3 = x1 3 in\n" ++
+     "x3"),
+
+    ("let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3",
+     "let x0 = Closure (fun env -> fun n -> " ++
+        "let x1 = n = 0 in\n" ++
+        "let x2 = if x1 then 0 else " ++
+          "let x3 = n - 1 in\n" ++
+          "let x4 = env.self x3 in\n" ++
+          "let x5 = n + x4 in\n" ++
+          "x5 in\n" ++
+        "x2, []) in\n" ++
+      "let x6 = x0 3 in\n" ++
+      "x6")
+
   ]
 
 testCompilation :: (String, Expr) -> Test
@@ -256,7 +291,7 @@ testClosure (prog, nfc) =
   let term = Parser.parse (Lexer.alexScanTokens prog)
       normForm = Compiler.toNormalForm term
       normFormClosure = Compiler.toClosure normForm
-   in TestLabel prog $
+   in TestLabel (show normForm) $
         TestCase $ assertEqual "" nfc (show normFormClosure)
 
 tests =

@@ -13,42 +13,23 @@ import FreshName
 data AtomicExpr =
   ALitInt Integer |
   ALitBool Bool |
-  AVar Id |
-  AAbs Id (ExprNF AtomicExpr)
+  AVar Id
 
-data ComplexExpr a =
-  COpAdd a a |
-  COpSub a a |
-  COpMul a a |
-  COpDiv a a |
-  COpLT a a |
-  COpEQ a a |
-  CIf a (ExprNF a) (ExprNF a) |
-  CApp a a
-  deriving (Foldable, Functor)
+data ComplexExpr =
+  COpAdd AtomicExpr AtomicExpr |
+  COpSub AtomicExpr AtomicExpr |
+  COpMul AtomicExpr AtomicExpr |
+  COpDiv AtomicExpr AtomicExpr |
+  COpLT AtomicExpr AtomicExpr |
+  COpEQ AtomicExpr AtomicExpr |
+  CIf AtomicExpr ExprNF ExprNF |
+  CApp AtomicExpr AtomicExpr |
+  CAbs Id ExprNF
 
-data ExprNF a =
-  EVal a |
-  ELet Id (ComplexExpr a) (ExprNF a) |
-  ELetRec Id (Id, ExprNF a) (ExprNF a)
-  deriving (Foldable, Functor)
-
-type ComplexExprAbs = ComplexExpr AtomicExpr
-type ExprNFAbs = ExprNF AtomicExpr
-
--- Intermediate language in normal form with closures
-
-type Env = [AtomicExprClosure]
-
-data AtomicExprClosure =
-  ACLitInt Integer |
-  ACLitBool Bool |
-  ACVar Id |
-  ACVarN Integer |
-  ACClosure Id ExprNFClosure Env
-
-type ComplexExprClosure = ComplexExpr AtomicExprClosure
-type ExprNFClosure = ExprNF AtomicExprClosure
+data ExprNF =
+  EVal AtomicExpr |
+  ELet Id ComplexExpr ExprNF |
+  ELetRec Id (Id, ExprNF) ExprNF
 
 -- Pretty print
 
@@ -56,17 +37,8 @@ instance Show AtomicExpr where
   show (ALitInt n) = show n
   show (ALitBool n) = show n
   show (AVar x) = x
-  show (AAbs x e) = "(fun " ++ x ++ " -> " ++ show e ++ ")"
 
-instance Show AtomicExprClosure where
-  show (ACLitInt n) = show n
-  show (ACLitBool n) = show n
-  show (ACVar x) = x
-  show (ACVarN n) = "env." ++ show n
-  show (ACClosure x f env) =
-    "Closure (fun env -> fun " ++ x ++ " -> " ++ show f ++ ", " ++ show env ++ ")"
-
-instance Show a => Show (ComplexExpr a) where
+instance Show ComplexExpr where
   show (COpAdd e1 e2) = show e1 ++ " + " ++ show e2
   show (COpSub e1 e2) = show e1 ++ " - " ++ show e2
   show (COpMul e1 e2) = show e1 ++ " * " ++ show e2
@@ -76,8 +48,9 @@ instance Show a => Show (ComplexExpr a) where
   show (CIf e1 e2 e3) =
     "if " ++ show e1 ++ " then " ++ show e2 ++ " else " ++ show e3
   show (CApp e1 e2) = show e1 ++ " " ++ show e2
+  show (CAbs x e) = "(fun " ++ x ++ " -> " ++ show e ++ ")"
 
-instance Show a => Show (ExprNF a) where
+instance Show ExprNF where
   show (EVal x) = show x
   show (ELet x e1 e2) =
     "let " ++ x ++ " = " ++ show e1 ++ " in\n" ++ show e2
@@ -86,8 +59,8 @@ instance Show a => Show (ExprNF a) where
 
 -- Expression -> normal form
 
-nfBinOp :: Expr -> Expr -> (AtomicExpr -> AtomicExpr -> ComplexExprAbs) ->
-  (Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNFAbs) -> NameGen ExprNFAbs
+nfBinOp :: Expr -> Expr -> (AtomicExpr -> AtomicExpr -> ComplexExpr) ->
+  (Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNF) -> NameGen ExprNF
 nfBinOp e1 e2 op s k = nf e1 s (\a -> nf e2 s (\b -> do
   c <- fresh
   d <- k (AVar c)
@@ -95,8 +68,8 @@ nfBinOp e1 e2 op s k = nf e1 s (\a -> nf e2 s (\b -> do
 
 nf :: Expr ->
   (Id -> AtomicExpr) ->
-  (AtomicExpr -> NameGen ExprNFAbs) ->
-  NameGen ExprNFAbs
+  (AtomicExpr -> NameGen ExprNF) ->
+  NameGen ExprNF
 nf (LitInt n) s k = k (ALitInt n)
 nf (LitBool b) s k = k (ALitBool b)
 nf (Var x) s k = k (s x)
@@ -116,22 +89,78 @@ nf (Let x e1 e2) s k =
   nf e1 s (\a -> nf e2 (\y -> if y == x then a else s y) (return . EVal))
 nf (LetRec f (x, e1) e2) s k = do
   a <- fresh
-  e1' <- nf e1 s (return . EVal)
-  e2' <- nf e2 (\y -> if y == f then AVar a else s y) (return . EVal)
+  let subst y = if y == f then AVar a else s y
+  e1' <- nf e1 subst (return . EVal)
+  e2' <- nf e2 subst (return . EVal)
   return (ELetRec a (x, e1') e2')
 nf (Abs x e) s k = do
+  a <- fresh
   b <- nf e s (return . EVal)
-  k (AAbs x b)
+  c <- k (AVar a)
+  return (ELet a (CAbs x b) c)
 nf (App e1 e2) s k = nf e1 s (\e1' -> nf e2 s (\e2' -> do
   a <- fresh
   d <- k (AVar a)
   return (ELet a (CApp e1' e2') d)))
 
-toNormalFormM :: Expr -> NameGen ExprNFAbs
+toNormalFormM :: Expr -> NameGen ExprNF
 toNormalFormM e = nf e AVar (return . EVal)
 
-toNormalForm :: Expr -> ExprNFAbs
+toNormalForm :: Expr -> ExprNF
 toNormalForm = runNameGen . toNormalFormM
+
+-- Intermediate language in normal form with closures
+
+data AtomicExprCl =
+  ACLitInt Integer |
+  ACLitBool Bool |
+  ACVar Id |
+  ACVarSelf |
+  ACVarN Integer
+
+type Env = [AtomicExprCl]
+
+data ComplexExprCl =
+  CCOpAdd AtomicExprCl AtomicExprCl |
+  CCOpSub AtomicExprCl AtomicExprCl |
+  CCOpMul AtomicExprCl AtomicExprCl |
+  CCOpDiv AtomicExprCl AtomicExprCl |
+  CCOpLT AtomicExprCl AtomicExprCl |
+  CCOpEQ AtomicExprCl AtomicExprCl |
+  CCIf AtomicExprCl ExprNFCl ExprNFCl |
+  CCApp AtomicExprCl AtomicExprCl |
+  CCClosure Id ExprNFCl Env
+
+data ExprNFCl =
+  ECVal AtomicExprCl |
+  ECLet Id ComplexExprCl ExprNFCl
+
+-- Pretty print
+
+instance Show AtomicExprCl where
+  show (ACLitInt n) = show n
+  show (ACLitBool n) = show n
+  show (ACVar x) = x
+  show (ACVarSelf) = "env.self"
+  show (ACVarN n) = "env." ++ show n
+
+instance Show ComplexExprCl where
+  show (CCOpAdd e1 e2) = show e1 ++ " + " ++ show e2
+  show (CCOpSub e1 e2) = show e1 ++ " - " ++ show e2
+  show (CCOpMul e1 e2) = show e1 ++ " * " ++ show e2
+  show (CCOpDiv e1 e2) = show e1 ++ " / " ++ show e2
+  show (CCOpLT e1 e2) = show e1 ++ " < " ++ show e2
+  show (CCOpEQ e1 e2) = show e1 ++ " = " ++ show e2
+  show (CCIf e1 e2 e3) =
+    "if " ++ show e1 ++ " then " ++ show e2 ++ " else " ++ show e3
+  show (CCApp e1 e2) = show e1 ++ " " ++ show e2
+  show (CCClosure x f env) =
+    "Closure (fun env -> fun " ++ x ++ " -> " ++ show f ++ ", " ++ show env ++ ")"
+
+instance Show ExprNFCl where
+  show (ECVal x) = show x
+  show (ECLet x e1 e2) =
+    "let " ++ x ++ " = " ++ show e1 ++ " in\n" ++ show e2
 
 -- Normal form -> normal form with closure
 
@@ -142,27 +171,54 @@ instance FreeVariables AtomicExpr where
   fv (ALitInt _) = []
   fv (ALitBool _) = []
   fv (AVar x) = [x]
-  fv (AAbs x e) = fv e \\ [x]
 
-instance FreeVariables a => FreeVariables (ComplexExpr a) where
-  fv = foldl (\acc atExpr -> acc ++ fv atExpr) []
+instance FreeVariables ComplexExpr where
+  fv (COpAdd e1 e2) = Data.List.union (fv e1) (fv e2)
+  fv (COpSub e1 e2) = Data.List.union (fv e1) (fv e2)
+  fv (COpMul e1 e2) = Data.List.union (fv e1) (fv e2)
+  fv (COpDiv e1 e2) = Data.List.union (fv e1) (fv e2)
+  fv (COpLT  e1 e2) = Data.List.union (fv e1) (fv e2)
+  fv (COpEQ  e1 e2) = Data.List.union (fv e1) (fv e2)
+  fv (CIf  b e1 e2) = let u = Data.List.union in (fv b) `u` (fv e1) `u` (fv e2)
+  fv (CApp   e1 e2) = Data.List.union (fv e1) (fv e2)
+  fv (CAbs x e) = fv e \\ [x]
 
-instance FreeVariables a => FreeVariables (ExprNF a) where
+instance FreeVariables ExprNF where
   fv (EVal x) = fv x
-  fv (ELet x e1 e2) = fv e1 ++ (fv e2 \\ [x])
-  fv (ELetRec f (x, e1) e2) = (fv e1 \\ [f, x]) ++ fv e2
+  fv (ELet x e1 e2) = Data.List.union (fv e1) (fv e2 \\ [x])
+  fv (ELetRec f (x, e1) e2) = Data.List.union (fv e1 \\ [f, x]) (fv e2 \\ [f])
 
-cl :: (Id -> AtomicExprClosure) -> AtomicExpr -> AtomicExprClosure
-cl s (ALitInt n) = ACLitInt n
-cl s (ALitBool b) = ACLitBool b
-cl s (AVar x) = s x
-cl s (AAbs x e) =
-  let fvs = fv (AAbs x e)
-      subst = \y ->
+clAt :: (Id -> AtomicExprCl) -> AtomicExpr -> AtomicExprCl
+clAt s (ALitInt n) = ACLitInt n
+clAt s (ALitBool b) = ACLitBool b
+clAt s (AVar x) = s x
+
+clAbs s f (x, e) =
+  let fvs = fv e \\ [f, x] in
+  let subst y =
         if x == y then
           ACVar x
-        else maybe (ACVar y) (ACVarN . toInteger) (Data.List.elemIndex y fvs)
-   in ACClosure x (fmap (cl subst) e) (map ACVar fvs)
+        else
+          maybe (s y) (ACVarN . toInteger) (Data.List.elemIndex y fvs)
+   in CCClosure x (clExpr subst e) (map ACVar fvs)
 
-toClosure :: ExprNFAbs -> ExprNFClosure
-toClosure = fmap (cl ACVar)
+clCo :: (Id -> AtomicExprCl) -> ComplexExpr -> ComplexExprCl
+clCo s (COpAdd e1 e2) = CCOpAdd (clAt s e1) (clAt s e2)
+clCo s (COpSub e1 e2) = CCOpSub (clAt s e1) (clAt s e2)
+clCo s (COpMul e1 e2) = CCOpMul (clAt s e1) (clAt s e2)
+clCo s (COpDiv e1 e2) = CCOpDiv (clAt s e1) (clAt s e2)
+clCo s (COpLT  e1 e2) = CCOpLT  (clAt s e1) (clAt s e2)
+clCo s (COpEQ  e1 e2) = CCOpEQ  (clAt s e1) (clAt s e2)
+clCo s (CIf  b e1 e2) = CCIf (clAt s b) (clExpr s e1) (clExpr s e2)
+clCo s (CApp   e1 e2) = CCApp   (clAt s e1) (clAt s e2)
+clCo s (CAbs x e) = clAbs s "" (x, e)
+
+clExpr :: (Id -> AtomicExprCl) -> ExprNF -> ExprNFCl
+clExpr s (EVal a) = ECVal (clAt s a)
+clExpr s (ELet x e1 e2) = ECLet x (clCo s e1) (clExpr s e2)
+clExpr s (ELetRec f (x, e1) e2) = ECLet f
+    (clAbs (\g -> if g == f then ACVarSelf else s g) f (x, e1))
+    (clExpr s e2)
+
+toClosure :: ExprNF -> ExprNFCl
+toClosure = clExpr ACVar
