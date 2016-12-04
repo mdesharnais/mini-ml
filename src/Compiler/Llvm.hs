@@ -94,7 +94,7 @@ compileCo (CCIf b e1 e2)  s k = do
   let elseLabel = label ++ "_else"
   beta <- freshVarName
   gamma <- freshVarName
-  let stmt0 = CmpEQ alpha (VInt 0) (compileAt b s)
+  let stmt0 = CmpEQ alpha (VInt 1) (compileAt b s)
   let stmt1 = Cbr (VId alpha) thenLabel elseLabel
   let stmt2 = Lbl thenLabel
   let stmt3 = Br label
