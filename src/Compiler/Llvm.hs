@@ -25,13 +25,17 @@ data Instr =
   Div   Id Value Value |
   CmpLT Id Value Value |
   CmpEQ Id Value Value |
+  Call  Id Value Value |
   Cast  Id Value |
   Phi   Id [(Label, Value)] |
   Br    Label |
   Cbr   Value Label Label |
+  Ret   Value |
   Lbl   Label
 
-type CompilationM a = NameGenT (State [Instr]) a
+type Function = (Id, Id, [Instr])
+type CompilationState = ([Function], [Instr])
+type CompilationM a = NameGenT (State CompilationState) a
 
 type Subst = Id -> Value
 
@@ -48,6 +52,8 @@ instance Show Instr where
     "  " ++ x ++ " = icmp ult i64 " ++ show e1 ++ ", " ++ show e2
   show (CmpEQ x e1 e2) =
     "  " ++ x ++ " = icmp eq i64 " ++ show e1 ++ ", " ++ show e2
+  show (Call x e1 e2) =
+    "  " ++ x ++ " = call i64 " ++ show e1 ++ " (i64 " ++ show e2 ++ ")"
   show (Cast x e) = "  " ++ x ++ " = zext i1 " ++ show e ++ " to i64"
   show (Phi x ys) = "  " ++ x ++ " = phi i64 " ++
     concat (List.intersperse ", "
@@ -55,27 +61,41 @@ instance Show Instr where
   show (Br lbl) = "  br label %" ++ lbl
   show (Cbr x thenLabel elseLabel) =
     "  br i1 " ++ show x ++ ", label %" ++ thenLabel ++ ", label %" ++ elseLabel
+  show (Ret e) = "  ret i64 " ++ show e
   show (Lbl x) = x ++ ":"
 
-runCompilation :: CompilationM a -> (a, [Instr])
-runCompilation = flip State.runState [] . runNameGenT
+runCompilation :: CompilationM a -> CompilationState -> (a, CompilationState)
+runCompilation m s = State.runState (runNameGenT m) s
+
+addFunctions :: [Function] -> CompilationM ()
+addFunctions funs =
+  let mapPair f g (x, y) = (f x, g y) in
+  lift (State.modify (mapPair (flip (++) funs) id))
 
 addInstrs :: [Instr] -> CompilationM ()
-addInstrs stmts = lift (State.modify (flip (++) stmts))
+addInstrs stmts =
+  let mapPair f g (x, y) = (f x, g y) in
+  lift (State.modify (mapPair id (flip (++) stmts)))
+
+promoteToFunction :: Id -> Id -> Value -> CompilationM ()
+promoteToFunction f x result =
+  let stmt = Ret result in
+  lift $ State.modify $ \(funs, stmts) -> ((f, x, stmts ++ [stmt]) : funs, [])
 
 getCurrentLabel :: CompilationM (Maybe Label)
 getCurrentLabel = do
   let isLabel (Lbl _) = True
       isLabel _ = False
-  lift (State.gets (fmap (\(Lbl x) -> x) . List.find isLabel . reverse))
+  lift (State.gets (fmap (\(Lbl x) -> x) . List.find isLabel . reverse . snd))
 
 freshVarName :: CompilationM Id
-freshVarName = do
-  a <- fresh
-  return ("%" ++ a)
+freshVarName = fmap ("%" ++) fresh
 
 freshLabelName :: CompilationM Label
 freshLabelName = fresh
+
+freshFunctionName :: CompilationM Id
+freshFunctionName = fmap ("@" ++) fresh
 
 compileAt :: AtomicExprCl -> Subst -> Value
 compileAt (ACLitInt n) s = VInt n
@@ -101,9 +121,10 @@ compileCo (CCOpAdd e1 e2) s = compileOp Add   e1 e2 s
 compileCo (CCOpSub e1 e2) s = compileOp Sub   e1 e2 s
 compileCo (CCOpMul e1 e2) s = compileOp Mul   e1 e2 s
 compileCo (CCOpDiv e1 e2) s = compileOp Div   e1 e2 s
-compileCo (CCOpLT e1 e2)  s = compileOp CmpLT e1 e2 s >>= addCast
-compileCo (CCOpEQ e1 e2)  s = compileOp CmpEQ e1 e2 s >>= addCast
-compileCo (CCIf b e1 e2)  s = do
+compileCo (CCOpLT  e1 e2) s = compileOp CmpLT e1 e2 s >>= addCast
+compileCo (CCOpEQ  e1 e2) s = compileOp CmpEQ e1 e2 s >>= addCast
+compileCo (CCApp   e1 e2) s = compileOp Call  e1 e2 s
+compileCo (CCIf  b e1 e2) s = do
   alpha <- freshVarName
   label <- freshLabelName
   let thenLabel = label ++ "_then"
@@ -128,7 +149,15 @@ compileCo (CCIf b e1 e2)  s = do
   let stmt7 = Phi gamma [(e1Label, e1'), (e2Label, e2')]
   addInstrs [stmt5, stmt6, stmt7]
   return (VId gamma)
-compileCo _ _ = undefined
+compileCo (CCClosure x e env) s = do
+  alpha <- freshFunctionName
+  let (e', (funs, [])) =
+        runCompilation (do
+          beta <- freshVarName
+          e' <- compileExpr e (\y -> if y == x then VId beta else s y)
+          promoteToFunction alpha beta e') ([], [])
+  addFunctions funs
+  return (VId alpha)
 
 compileExpr :: ExprNFCl -> Subst -> CompilationM Value
 compileExpr (ECVal x) s = return (compileAt x s)
@@ -139,17 +168,20 @@ compileExpr (ECLet x e1 e2) s = do
 
 compile :: ExprNFCl -> String
 compile e =
-  let (result, instrs) = runCompilation (compileExpr e VId) in
-  let toString [] = ""
-      toString (x : xs) = show x ++ "\n" ++ toString xs in
+  let (result, (funs, instrs)) = runCompilation (compileExpr e VId) ([], []) in
+  let showFun (f, x, b) =
+        "define i64 " ++ f ++ "(i64 " ++ x ++ ") {\n" ++
+          unlines (map show b) ++
+        "}" in
   unlines [
+      unlines (map showFun funs),
       "declare i32 @printf(i8*, ...)",
       "@.str = private unnamed_addr constant [4 x i8] c\"%d\\0A\\00\"",
       "define i32 @main() {",
-      toString instrs,
-      "call i32 (i8*, ...)* @printf(",
-        "i8* getelementptr inbounds ([4 x i8]* @.str, i32 0, i32 0), ",
-        "i64 " ++ show result ++ ")",
-      "ret i32 0",
+      unlines (map show instrs),
+      "  call i32 (i8*, ...)* @printf(",
+      "    i8* getelementptr inbounds ([4 x i8]* @.str, i32 0, i32 0), ",
+      "    i64 " ++ show result ++ ")",
+      "  ret i32 0",
       "}"
     ]
