@@ -116,7 +116,7 @@ data AtomicExprCl =
   ACLitBool Bool |
   ACVar Id |
   ACVarSelf |
-  ACVarN Integer
+  ACVarEnv Integer
 
 type Env = [AtomicExprCl]
 
@@ -142,7 +142,7 @@ instance Show AtomicExprCl where
   show (ACLitBool n) = show n
   show (ACVar x) = x
   show (ACVarSelf) = "env.self"
-  show (ACVarN n) = "env." ++ show n
+  show (ACVarEnv n) = "env." ++ show n
 
 instance Show ComplexExprCl where
   show (CCOpAdd e1 e2) = show e1 ++ " + " ++ show e2
@@ -199,7 +199,7 @@ clAbs s f (x, e) =
         if x == y then
           ACVar x
         else
-          maybe (s y) (ACVarN . toInteger) (Data.List.elemIndex y fvs)
+          maybe (s y) (ACVarEnv . toInteger) (Data.List.elemIndex y fvs)
    in CCClosure x (clExpr subst e) (map ACVar fvs)
 
 clCo :: (Id -> AtomicExprCl) -> ComplexExpr -> ComplexExprCl
