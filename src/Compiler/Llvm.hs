@@ -163,13 +163,13 @@ compileAt (ACLitInt n) s = return (VInt n)
 compileAt (ACLitBool True) s = return (VInt 1)
 compileAt (ACLitBool False) s = return (VInt 0)
 compileAt (ACVar x) s = return (s x)
+compileAt (ACVarSelf) s = return (VId "%closure")
 compileAt (ACVarEnv n) s = do
   alpha <- freshVarName
   envSize <- lift (State.gets csEnvSize)
   let stmt = Extractvalue alpha (VId "%env") (llvmArrayType envSize) n
   addInstrs [stmt]
   return (VId alpha)
-compileAt _ _ = undefined
 
 compileOp c e1 e2 s = do
   e1' <- compileAt e1 s
@@ -246,6 +246,12 @@ compileCo (CCClosure x e env) s = do
   let stmt4 = Ptrtoint epsilon (VId delta) closurePtrTy "i64"
   addInstrs (stmt0 : stmts ++ [stmt1, stmt2, stmt3, stmt4])
   return (VId epsilon)
+compileCo (CCApp ACVarSelf e2) s = do
+  alpha <- freshVarName
+  e2' <- compileAt e2 s
+  let stmt = Call alpha (VId "%self") (VId "%closure") e2'
+  addInstrs [stmt]
+  return (VId alpha)
 compileCo (CCApp e1 e2) s = do
   alpha <- freshVarName
   beta <- freshVarName
