@@ -1,12 +1,14 @@
+{-# LANGUAGE NamedFieldPuns #-}
+
 module Compiler.Llvm(compile) where
 
 import qualified Control.Monad.State as State
 import qualified Data.Foldable as Foldable
 import qualified Data.List as List
+import qualified Control.Monad.Trans as MonadTrans
 
 import Compiler
 import Control.Monad.State(State)
-import Control.Monad.Trans(lift)
 import Data.List.NonEmpty(NonEmpty(..))
 import FreshName
 import Text.Printf(printf)
@@ -16,7 +18,7 @@ import Text.Printf(printf)
 type Id = String
 type Label = Id
 
-data Value = VId Id | VInt Integer | VConst String
+data Value = VId Id | VInt Integer | VUndef
 
 type SrcType = String
 type DstType = String
@@ -45,8 +47,11 @@ data Instr =
   Insertvalue Id (Value, SrcType) (Value, ValType) (NonEmpty Integer) |
   Extractvalue Id Value SrcType Integer
 
--- (function name, arg name, instructions)
-type Function = (Id, Id, [Instr])
+data Function = Function {
+  funName :: Id,
+  funArg :: Id,
+  funInstrs :: [Instr]
+}
 
 data CompState = CompState {
   csFuns :: [Function],
@@ -65,16 +70,20 @@ type CompilationM a = NameGenT (State CompState) a
 runCompilation :: CompilationM a -> CompState -> (a, CompState)
 runCompilation m s = State.runState (runNameGenT m) s
 
-type Subst = Id -> Value
-
 llvmFunPtrType = "i64 (i64, i64)*"
 llvmArrayType n = "[" ++ show n ++ " x i64]"
 llvmClosureType n = "{" ++ llvmFunPtrType ++ ", " ++ llvmArrayType n ++ "}"
 
+instance Show Function where
+  show (Function { funName, funArg, funInstrs }) =
+    "define i64 " ++ funName ++ "(i64 %closure, i64 " ++ funArg ++ ") {\n" ++
+      unlines (map show funInstrs) ++
+    "}"
+
 instance Show Value where
   show (VId x) = x
   show (VInt n) = show n
-  show (VConst str) = str
+  show (VUndef) = "undef"
 
 instance Show Instr where
   show (Add x e1 e2) = printf "  %s = add i64 %s, %s" x (show e1) (show e2)
@@ -116,11 +125,11 @@ instance Show Instr where
 
 addFunctions :: [Function] -> CompilationM ()
 addFunctions funs =
-  lift (State.modify (\cs -> cs { csFuns = csFuns cs ++ funs }))
+  MonadTrans.lift (State.modify (\cs -> cs { csFuns = csFuns cs ++ funs }))
 
 addInstrs :: [Instr] -> CompilationM ()
 addInstrs stmts =
-  lift (State.modify (\cs -> cs { csInstrs = csInstrs cs ++ stmts }))
+  MonadTrans.lift (State.modify (\cs -> cs { csInstrs = csInstrs cs ++ stmts }))
 
 promoteToFunction :: Id -> Id -> Integer -> Value -> CompilationM ()
 promoteToFunction f x envLength result = do
@@ -133,20 +142,24 @@ promoteToFunction f x envLength result = do
   let stmt1 = Load beta (clPtrTy, VId alpha)
   let stmt2 = Extractvalue "%self" (VId beta) clTy 0
   let stmt3 = Extractvalue "%env"  (VId beta) clTy 1
-  lift $ State.modify $ \cs ->
+  MonadTrans.lift $ State.modify $ \cs ->
     let stmts = csInstrs cs in
-    let newFun = (f, x, [stmt0, stmt1, stmt2, stmt3] ++ stmts ++ [Ret result])
-     in cs {
-          csFuns = newFun : csFuns cs,
-          csInstrs = [],
-          csEnvSize = 0
-        }
+    let newFun = Function {
+          funName = f,
+          funArg = x,
+          funInstrs = [stmt0, stmt1, stmt2, stmt3] ++ stmts ++ [Ret result]
+        } in
+    cs {
+      csFuns = newFun : csFuns cs,
+      csInstrs = [],
+      csEnvSize = 0
+    }
 
 getCurrentLabel :: CompilationM (Maybe Label)
 getCurrentLabel =
   let isLabel (Lbl _) = True
       isLabel _ = False
-   in lift (State.gets
+   in MonadTrans.lift (State.gets
         (fmap (\(Lbl x) -> x) . List.find isLabel . reverse . csInstrs))
 
 freshVarName :: CompilationM Id
@@ -158,7 +171,7 @@ freshLabelName = fresh
 freshFunctionName :: CompilationM Id
 freshFunctionName = fmap ("@" ++) fresh
 
-compileAt :: AtomicExprCl -> Subst -> CompilationM Value
+compileAt :: AtomicExprCl -> (Id -> Value) -> CompilationM Value
 compileAt (ACLitInt n) s = return (VInt n)
 compileAt (ACLitBool True) s = return (VInt 1)
 compileAt (ACLitBool False) s = return (VInt 0)
@@ -166,7 +179,7 @@ compileAt (ACVar x) s = return (s x)
 compileAt (ACVarSelf) s = return (VId "%closure")
 compileAt (ACVarEnv n) s = do
   alpha <- freshVarName
-  envSize <- lift (State.gets csEnvSize)
+  envSize <- MonadTrans.lift (State.gets csEnvSize)
   let stmt = Extractvalue alpha (VId "%env") (llvmArrayType envSize) n
   addInstrs [stmt]
   return (VId alpha)
@@ -185,7 +198,7 @@ addCast x = do
   addInstrs [stmt]
   return (VId alpha)
 
-compileCo :: ComplexExprCl -> Subst -> CompilationM Value
+compileCo :: ComplexExprCl -> (Id -> Value) -> CompilationM Value
 compileCo (CCOpAdd e1 e2) s = compileOp Add   e1 e2 s
 compileCo (CCOpSub e1 e2) s = compileOp Sub   e1 e2 s
 compileCo (CCOpMul e1 e2) s = compileOp Mul   e1 e2 s
@@ -231,7 +244,7 @@ compileCo (CCClosure x e env) s = do
   let closurePtrTy = closureTy ++ "*"
   aaa <- freshVarName
   let stmt0 = Insertvalue aaa
-        (VConst "undef", closureTy) (VId alpha, llvmFunPtrType) (0 :| [])
+        (VUndef, closureTy) (VId alpha, llvmFunPtrType) (0 :| [])
   (_, ccc, stmts) <- Foldable.foldlM (\(n, id, stmts) var -> do
     var' <- compileAt var s
     bbb <- freshVarName
@@ -268,7 +281,7 @@ compileCo (CCApp e1 e2) s = do
   addInstrs [stmt0, stmt1, stmt2, stmt3]
   return (VId delta)
 
-compileExpr :: ExprNFCl -> Subst -> CompilationM Value
+compileExpr :: ExprNFCl -> (Id -> Value) -> CompilationM Value
 compileExpr (ECVal x) s = compileAt x s
 compileExpr (ECLet x e1 e2) s = do
   e1' <- compileCo e1 s
@@ -278,14 +291,10 @@ compileExpr (ECLet x e1 e2) s = do
 compile :: ExprNFCl -> String
 compile e =
   let (result, cs) = runCompilation (compileExpr e VId) emptyCompState in
-  let showFun (f, x, b) =
-        "define i64 " ++ f ++ "(i64 %closure, i64 " ++ x ++ ") {\n" ++
-          unlines (map show b) ++
-        "}" in
   unlines [
       "declare i32 @printf(i8*, ...)",
       "declare i8* @malloc(i64)",
-      unlines (map showFun (csFuns cs)),
+      unlines (map show (csFuns cs)),
       "@.str = private unnamed_addr constant [4 x i8] c\"%d\\0A\\00\"",
       "define i32 @main() {",
       unlines (map show (csInstrs cs)),
