@@ -8,7 +8,7 @@ import qualified Data.List as List
 import qualified Control.Monad.Trans as MonadTrans
 
 import Compiler
-import Control.Monad.State(State)
+import Control.Monad.State(StateT)
 import Data.List.NonEmpty(NonEmpty(..))
 import FreshName
 import Text.Printf(printf)
@@ -65,10 +65,10 @@ emptyCompState = CompState {
   csEnvSize = 0
 }
 
-type CompilationM a = NameGenT (State CompState) a
+type CompilationM a = StateT CompState NameGen a
 
 runCompilation :: CompilationM a -> CompState -> (a, CompState)
-runCompilation m s = State.runState (runNameGenT m) s
+runCompilation m s = runNameGen (State.runStateT m s)
 
 llvmFunPtrType = "i64 (i64, i64)*"
 llvmArrayType n = "[" ++ show n ++ " x i64]"
@@ -124,12 +124,10 @@ instance Show Instr where
     printf "  %s = extractvalue %s %s, %d" x srcTy (show e) n
 
 addFunctions :: [Function] -> CompilationM ()
-addFunctions funs =
-  MonadTrans.lift (State.modify (\cs -> cs { csFuns = csFuns cs ++ funs }))
+addFunctions funs = State.modify (\cs -> cs { csFuns = csFuns cs ++ funs })
 
 addInstrs :: [Instr] -> CompilationM ()
-addInstrs stmts =
-  MonadTrans.lift (State.modify (\cs -> cs { csInstrs = csInstrs cs ++ stmts }))
+addInstrs stmts = State.modify (\cs -> cs { csInstrs = csInstrs cs ++ stmts })
 
 promoteToFunction :: Id -> Id -> Integer -> Value -> CompilationM ()
 promoteToFunction f x envLength result = do
@@ -142,7 +140,7 @@ promoteToFunction f x envLength result = do
   let stmt1 = Load beta (clPtrTy, VId alpha)
   let stmt2 = Extractvalue "%self" (VId beta) clTy 0
   let stmt3 = Extractvalue "%env"  (VId beta) clTy 1
-  MonadTrans.lift $ State.modify $ \cs ->
+  State.modify $ \cs ->
     let stmts = csInstrs cs in
     let newFun = Function {
           funName = f,
@@ -159,17 +157,21 @@ getCurrentLabel :: CompilationM (Maybe Label)
 getCurrentLabel =
   let isLabel (Lbl _) = True
       isLabel _ = False
-   in MonadTrans.lift (State.gets
-        (fmap (\(Lbl x) -> x) . List.find isLabel . reverse . csInstrs))
+   in State.gets
+        (fmap (\(Lbl x) -> x) . List.find isLabel . reverse . csInstrs)
 
 freshVarName :: CompilationM Id
-freshVarName = fmap ("%" ++) fresh
+freshVarName = do
+  alpha <- MonadTrans.lift fresh
+  return ("%" ++ alpha)
 
 freshLabelName :: CompilationM Label
-freshLabelName = fresh
+freshLabelName = MonadTrans.lift fresh
 
 freshFunctionName :: CompilationM Id
-freshFunctionName = fmap ("@" ++) fresh
+freshFunctionName = do
+  alpha <- MonadTrans.lift fresh
+  return ("@" ++ alpha)
 
 compileAt :: AtomicExprCl -> (Id -> Value) -> CompilationM Value
 compileAt (ACLitInt n) s = return (VInt n)
@@ -179,7 +181,7 @@ compileAt (ACVar x) s = return (s x)
 compileAt (ACVarSelf) s = return (VId "%closure")
 compileAt (ACVarEnv n) s = do
   alpha <- freshVarName
-  envSize <- MonadTrans.lift (State.gets csEnvSize)
+  envSize <- State.gets csEnvSize
   let stmt = Extractvalue alpha (VId "%env") (llvmArrayType envSize) n
   addInstrs [stmt]
   return (VId alpha)
@@ -233,12 +235,11 @@ compileCo (CCIf  b e1 e2) s = do
 compileCo (CCClosure x e env) s = do
   let envSize = toInteger (length env)
   alpha <- freshFunctionName
-  let (e', cs) =
-        runCompilation (do
-          beta <- freshVarName
-          e' <- compileExpr e (\y -> if y == x then VId beta else s y)
-          promoteToFunction alpha beta envSize e')
-            (emptyCompState { csEnvSize = envSize })
+  (e', cs) <- MonadTrans.lift (State.runStateT (do
+      beta <- freshVarName
+      e' <- compileExpr e (\y -> if y == x then VId beta else s y)
+      promoteToFunction alpha beta envSize e')
+        (emptyCompState { csEnvSize = envSize }))
   addFunctions (csFuns cs)
   let closureTy = llvmClosureType envSize
   let closurePtrTy = closureTy ++ "*"

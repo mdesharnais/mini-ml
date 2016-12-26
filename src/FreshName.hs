@@ -14,7 +14,7 @@ class Monad m => MonadNameGen m where
 newtype NameGenT m a = NameGenT (StateT [Name] m a)
   deriving (Applicative, Functor, Monad, MonadIO, MonadTrans)
 
-type NameGen a = NameGenT Identity a
+type NameGen = NameGenT Identity
 
 runNameGen :: NameGen a -> a
 runNameGen = runIdentity . runNameGenT
