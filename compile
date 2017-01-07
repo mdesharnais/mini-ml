@@ -5,7 +5,10 @@ stack build
 
 case $1 in
   run)
-    echo "$2" | stack exec mini-ml-exe | lli-3.5
+    echo "$2" | stack exec mini-ml-exe | llc-3.5 -filetype=obj -o prog.o
+    clang -o prog src/libutil.c prog.o
+    rm prog.o
+    ./prog
     ;;
   show)
     echo "$2" | stack exec mini-ml-exe

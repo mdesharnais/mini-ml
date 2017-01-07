@@ -27,6 +27,7 @@ import Lexer
   'let'         { (_, TLet) }
   'in'          { (_, TIn) }
   'rec'         { (_, TRec) }
+  'extern'      { (_, TExtern) }
   INT           { (_, TLitInt $$) }
   ID            { (_, TId $$) }
 
@@ -55,6 +56,7 @@ App : App AtExp               { App $1 $2 }
 AtExp :: { Expr }
 AtExp : ID                    { Var $1 }
       | Lit                   { $1 }
+      | ExternId              { $1 }
       | '(' Exp ')'           { $2 }
 
 Lit :: { Expr }
@@ -76,6 +78,9 @@ Let : 'let' ID '=' Exp 'in' Exp                        { Let $2 $4 $6 }
 
 If :: { Expr }
 If : 'if' Exp 'then' Exp 'else' Exp     { If $2 $4 $6 }
+
+ExternId :: { Expr }
+ExternId : 'extern' ID        { ExternVar $2 }
 
 {
 happyError :: [Token] -> a

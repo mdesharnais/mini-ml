@@ -13,7 +13,8 @@ import FreshName
 data AtomicExpr =
   ALitInt Integer |
   ALitBool Bool |
-  AVar Id
+  AVar Id |
+  AExternVar Id
 
 data ComplexExpr =
   COpAdd AtomicExpr AtomicExpr |
@@ -37,6 +38,7 @@ instance Show AtomicExpr where
   show (ALitInt n) = show n
   show (ALitBool n) = show n
   show (AVar x) = x
+  show (AExternVar x) = x
 
 instance Show ComplexExpr where
   show (COpAdd e1 e2) = show e1 ++ " + " ++ show e2
@@ -73,6 +75,7 @@ nf :: Expr ->
 nf (LitInt n) s k = k (ALitInt n)
 nf (LitBool b) s k = k (ALitBool b)
 nf (Var x) s k = k (s x)
+nf (ExternVar x) s k = k (AExternVar x)
 nf (OpAdd e1 e2) s k = nfBinOp e1 e2 COpAdd s k
 nf (OpSub e1 e2) s k = nfBinOp e1 e2 COpSub s k
 nf (OpMul e1 e2) s k = nfBinOp e1 e2 COpMul s k
@@ -114,6 +117,7 @@ toNormalForm = runNameGen . toNormalFormM
 data AtomicExprCl =
   ACLitInt Integer |
   ACLitBool Bool |
+  ACExternVar Id |
   ACVar Id |
   ACVarSelf |
   ACVarEnv Integer
@@ -140,6 +144,7 @@ data ExprNFCl =
 instance Show AtomicExprCl where
   show (ACLitInt n) = show n
   show (ACLitBool n) = show n
+  show (ACExternVar x) = show x
   show (ACVar x) = x
   show (ACVarSelf) = "env.self"
   show (ACVarEnv n) = "env." ++ show n
@@ -171,6 +176,7 @@ instance FreeVariables AtomicExpr where
   fv (ALitInt _) = []
   fv (ALitBool _) = []
   fv (AVar x) = [x]
+  fv (AExternVar x) = []
 
 instance FreeVariables ComplexExpr where
   fv (COpAdd e1 e2) = Data.List.union (fv e1) (fv e2)
@@ -192,6 +198,7 @@ clAt :: (Id -> AtomicExprCl) -> AtomicExpr -> AtomicExprCl
 clAt s (ALitInt n) = ACLitInt n
 clAt s (ALitBool b) = ACLitBool b
 clAt s (AVar x) = s x
+clAt s (AExternVar x) = (ACExternVar x)
 
 clAbs s f (x, e) =
   let fvs = fv e \\ [f, x] in

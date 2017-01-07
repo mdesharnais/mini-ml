@@ -6,6 +6,7 @@ data Expr =
   LitInt Integer |
   LitBool Bool |
   Var Id |
+  ExternVar Id |
   OpAdd Expr Expr |
   OpSub Expr Expr |
   OpMul Expr Expr |
@@ -23,6 +24,7 @@ instance Show Expr where
   show (LitInt n) = show n
   show (LitBool b) = show b
   show (Var x) = x
+  show (ExternVar x) = x
   show (OpAdd e1 e2) = "(" ++ show e1 ++ " + " ++ show e2 ++ ")"
   show (OpSub e1 e2) = "(" ++ show e1 ++ " - " ++ show e2 ++ ")"
   show (OpMul e1 e2) = "(" ++ show e1 ++ " * " ++ show e2 ++ ")"

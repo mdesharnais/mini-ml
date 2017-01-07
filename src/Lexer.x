@@ -30,6 +30,7 @@ tokens :-
   "let"             { \p s -> (p, TLet) }
   "in"              { \p s -> (p, TIn) }
   "rec"             { \p s -> (p, TRec) }
+  "extern"          { \p s -> (p, TExtern) }
   $digit+           { \p s -> (p, TLitInt (read s)) }
   $alpha $alnum*    { \p s -> (p, TId s) }
 
@@ -54,7 +55,8 @@ data Tok =
   TElse |
   TLet |
   TIn |
-  TRec
+  TRec |
+  TExtern
   deriving (Eq,Show)
 
 type Token = (AlexPosn, Tok)

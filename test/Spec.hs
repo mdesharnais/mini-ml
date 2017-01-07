@@ -53,6 +53,7 @@ testEquivalences = [
     ("f x y z", "((f x) y) z"),
     ("f x + f y", "(f x) + (f y)"),
     ("a * b < c * d", "(a * b) < (c * d)"),
+    ("extern f 5", "(extern f) 5"),
     ("let min = fun x -> fun y -> if x < y then x else y in min 2 3",
      "let min = (fun x -> (fun y -> (if (x < y) then x else y))) in ((min 2) 3)")
   ]
@@ -70,6 +71,7 @@ testInference = [
     (Type.emptyContext, "3 < 2", TBool),
     (Type.emptyContext, "3 = 2", TBool),
     (Type.emptyContext, "if true then 0 else 1", TInt),
+    (Type.emptyContext, "extern f", TFun TInt TInt),
     (Type.emptyContext, "fun x -> x", TFun (TVar "x0") (TVar "x0")),
     (Type.emptyContext, "fun x -> true", TFun (TVar "x0") TBool),
     (Type.emptyContext, "let x = true in 3", TInt),

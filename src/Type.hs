@@ -138,6 +138,8 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
           tySchema <- lift (lookupContext x c)
           newType <- instanciate emptySubst tySchema
           return (emptySubst, newType)
+        impl c (ExternVar x) = do
+          return (emptySubst, TFun TInt TInt)
         impl c (Abs x e) = do
           alpha <- genFreshTVar
           (s, tau) <- impl (addContext (x, alpha) c) e

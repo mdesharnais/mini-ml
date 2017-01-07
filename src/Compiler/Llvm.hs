@@ -31,7 +31,7 @@ data Instr =
   Div   Id Value Value |
   CmpLT Id Value Value |
   CmpEQ Id Value Value |
-  Call  Id Value Value Value |
+  Call  Id Value [Value] |
   Cast  Id Value |
   Phi   Id [(Label, Value)] |
   Br    Label |
@@ -54,12 +54,14 @@ data Function = Function {
 }
 
 data CompState = CompState {
+  csExternVars :: [Id],
   csFuns :: [Function],
   csInstrs :: [Instr],
   csEnvSize :: Integer
 }
 
 emptyCompState = CompState {
+  csExternVars = [],
   csFuns = [],
   csInstrs = [],
   csEnvSize = 0
@@ -94,8 +96,9 @@ instance Show Instr where
     printf "  %s = icmp ult i64 %s, %s" x (show e1) (show e2)
   show (CmpEQ x e1 e2) =
     printf "  %s = icmp eq i64 %s, %s" x (show e1) (show e2)
-  show (Call x f cl n) =
-    printf "  %s = call i64 %s(i64 %s, i64 %s)" x (show f) (show cl) (show n)
+  show (Call x f args) =
+    printf "  %s = call i64 %s(%s)" x (show f)
+      (List.intercalate ", " (map (("i64 " ++) . show) args))
   show (Cast x e) = printf "  %s = zext i1 %s to i64" x (show e)
   show (Phi x ys) = "  " ++ x ++ " = phi i64 " ++
     concat (List.intersperse ", "
@@ -128,6 +131,9 @@ addFunctions funs = State.modify (\cs -> cs { csFuns = csFuns cs ++ funs })
 
 addInstrs :: [Instr] -> CompilationM ()
 addInstrs stmts = State.modify (\cs -> cs { csInstrs = csInstrs cs ++ stmts })
+
+addExternals :: [Id] -> CompilationM ()
+addExternals fs = State.modify (\cs -> cs { csExternVars = fs ++ csExternVars cs })
 
 promoteToFunction :: Id -> Id -> Integer -> Value -> CompilationM ()
 promoteToFunction f x envLength result = do
@@ -177,6 +183,9 @@ compileAt :: AtomicExprCl -> (Id -> Value) -> CompilationM Value
 compileAt (ACLitInt n) s = return (VInt n)
 compileAt (ACLitBool True) s = return (VInt 1)
 compileAt (ACLitBool False) s = return (VInt 0)
+compileAt (ACExternVar x) s = do
+  addExternals [x]
+  return (VId ("@" ++ x))
 compileAt (ACVar x) s = return (s x)
 compileAt (ACVarSelf) s = return (VId "%closure")
 compileAt (ACVarEnv n) s = do
@@ -241,6 +250,7 @@ compileCo (CCClosure x e env) s = do
       promoteToFunction alpha beta envSize e')
         (emptyCompState { csEnvSize = envSize }))
   addFunctions (csFuns cs)
+  addExternals (csExternVars cs)
   let closureTy = llvmClosureType envSize
   let closurePtrTy = closureTy ++ "*"
   aaa <- freshVarName
@@ -260,10 +270,17 @@ compileCo (CCClosure x e env) s = do
   let stmt4 = Ptrtoint epsilon (VId delta) closurePtrTy "i64"
   addInstrs (stmt0 : stmts ++ [stmt1, stmt2, stmt3, stmt4])
   return (VId epsilon)
+compileCo (CCApp (ACExternVar f) e) s = do
+  alpha <- freshVarName
+  e' <- compileAt e s
+  let stmt = Call alpha (VId ("@" ++ f)) [e']
+  addExternals [f]
+  addInstrs [stmt]
+  return (VId alpha)
 compileCo (CCApp ACVarSelf e2) s = do
   alpha <- freshVarName
   e2' <- compileAt e2 s
-  let stmt = Call alpha (VId "%self") (VId "%closure") e2'
+  let stmt = Call alpha (VId "%self") [VId "%closure", e2']
   addInstrs [stmt]
   return (VId alpha)
 compileCo (CCApp e1 e2) s = do
@@ -278,7 +295,7 @@ compileCo (CCApp e1 e2) s = do
   let stmt0 = Inttoptr alpha e1' "i64" clPtrTy
   let stmt1 = Load beta (clPtrTy, VId alpha)
   let stmt2 = Extractvalue gamma (VId beta) clTy 0
-  let stmt3 = Call delta (VId gamma) e1' e2'
+  let stmt3 = Call delta (VId gamma) [e1', e2']
   addInstrs [stmt0, stmt1, stmt2, stmt3]
   return (VId delta)
 
@@ -291,17 +308,19 @@ compileExpr (ECLet x e1 e2) s = do
 
 compile :: ExprNFCl -> String
 compile e =
+  let showExtern f = "declare i64 @" ++ f ++ "(i64)" in
   let (result, cs) = runCompilation (compileExpr e VId) emptyCompState in
   unlines [
+      "; Implementation defined external declarations",
       "declare i32 @printf(i8*, ...)",
       "declare i8* @malloc(i64)",
+      "; User defined external declarations",
+      unlines (map showExtern (csExternVars cs)),
+      "; User defined functions",
       unlines (map show (csFuns cs)),
       "@.str = private unnamed_addr constant [4 x i8] c\"%d\\0A\\00\"",
       "define i32 @main() {",
       unlines (map show (csInstrs cs)),
-      "  call i32 (i8*, ...)* @printf(",
-      "    i8* getelementptr inbounds ([4 x i8]* @.str, i32 0, i32 0), ",
-      "    i64 " ++ show result ++ ")",
       "  ret i32 0",
       "}"
     ]
