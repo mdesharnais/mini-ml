@@ -6,27 +6,33 @@ import qualified Data.Maybe
 
 import Control.Monad.Trans(lift)
 import Data.List((\\))
-import Expr(Expr(..))
+import Expr
 import FreshName
 
 data Type =
   TBool |
   TInt |
+  TClosure Type Type |
   TFun Type Type |
   TVar String
-  deriving (Eq, Show)
+  deriving (Eq)
 
 data TypeSchema =
   TSType Type |
   TSForall String TypeSchema
 
-class FreeVars a where
-  freeVars :: a -> [String]
+instance Show Type where
+  show TBool = "bool"
+  show TInt = "int"
+  show (TClosure t1 t2) = "(" ++ show t1 ++ " => " ++ show t2 ++ ")"
+  show (TFun     t1 t2) = "(" ++ show t1 ++ " -> " ++ show t2 ++ ")"
+  show (TVar x) = x
 
 instance FreeVars Type where
   freeVars TBool = []
   freeVars TInt = []
-  freeVars (TFun t1 t2) = Data.List.union (freeVars t1) (freeVars t2)
+  freeVars (TClosure t1 t2) = Data.List.union (freeVars t1) (freeVars t2)
+  freeVars (TFun     t1 t2) = Data.List.union (freeVars t1) (freeVars t2)
   freeVars (TVar x) = [x]
 
 instance FreeVars TypeSchema where
@@ -71,9 +77,11 @@ singletonSubst :: (String, Type) -> Subst
 singletonSubst p = addSubst p emptySubst
 
 applyOnType :: Subst -> Type -> Type
-applyOnType s (TFun t1 t2) = TFun (applyOnType s t1) (applyOnType s t2)
+applyOnType s TBool = TBool
+applyOnType s TInt = TInt
+applyOnType s (TClosure t1 t2) = TClosure (applyOnType s t1) (applyOnType s t2)
+applyOnType s (TFun     t1 t2) = TFun     (applyOnType s t1) (applyOnType s t2)
 applyOnType s (TVar x) = Data.Maybe.fromMaybe (TVar x) (Data.List.lookup x s)
-applyOnType s t = t
 
 applyOnTypeSchema :: Subst -> TypeSchema -> TypeSchema
 applyOnTypeSchema s (TSType ty) = TSType (applyOnType s ty)
@@ -91,7 +99,8 @@ genFreshTVar = fresh >>= (return . TVar)
 typeContains :: String -> Type -> Bool
 typeContains x TBool = False
 typeContains x TInt = False
-typeContains x (TFun t1 t2) = (typeContains x t1) || (typeContains x t2)
+typeContains x (TClosure t1 t2) = (typeContains x t1) || (typeContains x t2)
+typeContains x (TFun     t1 t2) = (typeContains x t1) || (typeContains x t2)
 typeContains x (TVar y) = x == y
 
 unify :: Type -> Type -> Maybe Subst
@@ -101,6 +110,18 @@ unify (TVar x) t =
   if typeContains x t then Nothing else Just (singletonSubst (x, t))
 unify t (TVar x) =
   if typeContains x t then Nothing else Just (singletonSubst (x, t))
+unify (TClosure t1 t2) (TClosure t1' t2') = do
+  s1 <- unify t1 t1'
+  s2 <- unify (applyOnType s1 t2) (applyOnType s1 t2')
+  Just (concatSubst s1 s2)
+unify (TClosure t1 t2) (TFun t1' t2') = do
+  s1 <- unify t1 t1'
+  s2 <- unify (applyOnType s1 t2) (applyOnType s1 t2')
+  Just (concatSubst s1 s2)
+unify (TFun t1 t2) (TClosure t1' t2') = do
+  s1 <- unify t1 t1'
+  s2 <- unify (applyOnType s1 t2) (applyOnType s1 t2')
+  Just (concatSubst s1 s2)
 unify (TFun t1 t2) (TFun t1' t2') = do
   s1 <- unify t1 t1'
   s2 <- unify (applyOnType s1 t2) (applyOnType s1 t2')
@@ -143,12 +164,16 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
         impl c (Abs x e) = do
           alpha <- genFreshTVar
           (s, tau) <- impl (addContext (x, alpha) c) e
-          return (s, TFun (applyOnType s alpha) tau)
+          let alpha' = applyOnType s alpha
+          let ty = case freeVars (Abs x e) of
+                     []  -> TFun alpha' tau
+                     (_:_) -> TClosure alpha' tau
+          return (s, ty)
         impl c (App e1 e2) = do
           (s1, tau1) <- impl c e1
           (s2, tau2) <- impl (s1 `app` c) e2
           beta <- genFreshTVar
-          s3 <- lift $ unify (applyOnType s2 tau1) (TFun tau2 beta)
+          s3 <- lift $ unify (applyOnType s2 tau1) (TClosure tau2 beta)
           return (s1 `cat` s2 `cat` s3, applyOnType s3 beta)
         impl c (LitInt _) = return (emptySubst, TInt)
         impl c (LitBool _) = return (emptySubst, TBool)

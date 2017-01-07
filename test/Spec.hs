@@ -75,6 +75,8 @@ testInference = [
     (Type.emptyContext, "fun x -> x", TFun (TVar "x0") (TVar "x0")),
     (Type.emptyContext, "fun x -> true", TFun (TVar "x0") TBool),
     (Type.emptyContext, "let x = true in 3", TInt),
+    (Type.emptyContext, "let n = 3 in fun m -> m + n", TClosure TInt TInt),
+    (Type.emptyContext, "let n = 3 in fun m -> fun k -> m + n + k", TClosure TInt (TClosure TInt TInt)),
     (Type.emptyContext, "let min = fun x -> fun y -> if x < y then x else y in min 2 3", TInt),
     (Type.emptyContext, "let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3", TInt),
     (Type.emptyContext, "let min = fun b -> fun x -> fun y -> if b then x else y in min true 2 3", TInt),
@@ -86,17 +88,17 @@ testInference = [
       "let rec foo = fun b -> fun x -> fun y -> if b then x else foo (not b) y x in " ++
       "foo false 1 1", TInt),
     (Type.emptyContext, "fun fix -> fun f -> f (fun y -> fix f y)",
-      TFun (TFun (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5")) (TFun (TVar
-      "x2") (TVar "x4"))) (TFun (TFun (TFun (TVar "x2") (TVar "x4")) (TVar
+      TFun (TClosure (TClosure (TClosure (TVar "x2") (TVar "x4")) (TVar "x5")) (TClosure (TVar
+      "x2") (TVar "x4"))) (TClosure (TClosure (TClosure (TVar "x2") (TVar "x4")) (TVar
       "x5")) (TVar "x5"))),
     (Type.emptyContext, "let rec fix = fun f -> f (fun y -> fix f y) in fix",
-      TFun (TFun ((TVar "x8") `TFun` (TVar "x7")) (TFun (TVar "x8") (TVar "x7"))) (TFun (TVar "x8") (TVar "x7"))),
+      TClosure (TClosure ((TVar "x8") `TClosure` (TVar "x7")) (TClosure (TVar "x8") (TVar "x7"))) (TClosure (TVar "x8") (TVar "x7"))),
     (Type.emptyContext,
       "fun f -> f (fun x -> f (fun y -> y))",
-      TFun (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) (TVar "x4")),
+      TFun (TClosure (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) (TVar "x4")),
     (Type.emptyContext,
       "fun f -> f (fun x -> f (fun y -> x))",
-      TFun (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) (TVar "x4")),
+      TFun (TClosure (TClosure (TVar "x4") (TVar "x4")) (TVar "x4")) (TVar "x4")),
     (Type.singletonContext ("x", TInt), "x", TInt),
     (Type.singletonContext ("f", TFun TInt TInt), "f", TFun TInt TInt),
     (Type.singletonContext ("f", TFun TInt TInt), "f 3", TInt),
