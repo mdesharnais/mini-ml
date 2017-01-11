@@ -5,7 +5,7 @@ import qualified Lexer
 import qualified Parser
 import qualified Type
 
-import Expr(Expr(..))
+import Expr(TyExpr(..), Expr)
 import Interpreter(Value(..))
 import Test.HUnit
 import Type(Type(..))
@@ -35,7 +35,8 @@ variables = [
 functions = [
     ("let min = fun x -> fun y -> if x < y then x else y in min 3 5",
       Let "min"
-        (Abs "x" (Abs "y" (If (OpLT (Var "x") (Var "y")) (Var "x") (Var "y"))))
+        (Abs ("x", ()) (Abs ("y", ())
+          (If (OpLT (Var "x") (Var "y")) (Var "x") (Var "y"))))
         (App (App (Var "min") (LitInt 3)) (LitInt 5))),
     ("1 * 2 < 3 * 4",
       OpLT (OpMul (LitInt 1) (LitInt 2)) (OpMul (LitInt 3) (LitInt 4)))
@@ -264,7 +265,7 @@ testTypeInference (ctxt, prog, ty) =
    in TestLabel ("program '" ++ prog ++ "' has type '" ++ show ty ++ "'") $
         TestCase $
           case Type.infer ctxt term of
-            Just (subst, inferedTy) -> assertEqual (show subst) ty inferedTy
+            Just (subst, inferedTy, _) -> assertEqual (show subst) ty inferedTy
             Nothing -> assertFailure "did not type checked"
 
 testInterpreter :: (String, Value) -> Test

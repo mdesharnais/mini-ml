@@ -1,7 +1,7 @@
 {
 module Parser where
 
-import Expr(Expr(..))
+import Expr(TyExpr(..), Expr)
 import Lexer
 }
 
@@ -47,7 +47,7 @@ Exp0 : ArithExp               { $1 }
      | App                    { $1 }
 
 Abs :: { Expr }
-Abs : 'fun' ID '->' Exp       { Abs $2 $4 }
+Abs : 'fun' ID '->' Exp       { Abs ($2, ()) $4 }
 
 App :: { Expr }
 App : App AtExp               { App $1 $2 }
@@ -74,7 +74,7 @@ ArithExp : Exp0 '+' Exp0      { OpAdd $1 $3 }
 
 Let :: { Expr }
 Let : 'let' ID '=' Exp 'in' Exp                        { Let $2 $4 $6 }
-    | 'let' 'rec' ID '=' 'fun' ID '->' Exp 'in' Exp    { LetRec $3 ($6, $8) $10 }
+    | 'let' 'rec' ID '=' 'fun' ID '->' Exp 'in' Exp    { LetRec $3 (($6, ()), $8) $10 }
 
 If :: { Expr }
 If : 'if' Exp 'then' Exp 'else' Exp     { If $2 $4 $6 }

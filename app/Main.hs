@@ -13,10 +13,10 @@ compileFile code =
       exp = Parser.parse tokens
    in case Type.inferProgType exp of
         Nothing -> "Does not type check"
-        Just ty -> let nf = Compiler.toNormalForm exp
-                       nfCl = Compiler.toClosure nf
-                       llvmIr = Compiler.Llvm.compile nfCl
-                    in llvmIr
+        Just (exp', ty) -> let nf = Compiler.toNormalForm exp
+                               nfCl = Compiler.toClosure nf
+                               llvmIr = Compiler.Llvm.compile nfCl
+                            in llvmIr
 
 main :: IO ()
 main = interact compileFile

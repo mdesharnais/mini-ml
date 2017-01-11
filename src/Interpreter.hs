@@ -2,7 +2,7 @@ module Interpreter where
 
 import qualified Data.List
 
-import Expr(Expr(..))
+import Expr(TyExpr(..), Expr)
 
 type Env = [(String, Value)]
 data Value =
@@ -20,7 +20,7 @@ evalBinOpInt env t1 t2 result f = do
 
 eval :: Env -> Expr -> Maybe Value
 eval env (Var x) = Data.List.lookup x env
-eval env (Abs x t) = Just (Closure x t env)
+eval env (Abs (x, _) t) = Just (Closure x t env)
 eval env (App t1 t2) = do
   v1 <- eval env t1
   v2 <- eval env t2
@@ -44,6 +44,6 @@ eval env (If t1 t2 t3) = do
 eval env (Let x t1 t2) = do
   v1 <- eval env t1
   eval ((x, v1) : env) t2
-eval env (LetRec f (x, t1) t2) =
-  let closure = Closure x (LetRec f (x, t1) t1) env
+eval env (LetRec f ((x, ty), t1) t2) =
+  let closure = Closure x (LetRec f ((x, ty), t1) t1) env
    in eval ((f, closure) : env) t2
