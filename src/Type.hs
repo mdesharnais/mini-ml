@@ -209,6 +209,3 @@ infer c e = runNameGenTWithout (extractTypeVars c) (impl c e)
           let tau1' = Data.List.foldl (flip TSForall) (TSType tau1) tyVars
           (theta2, tau2) <- impl (s `app` (addTySchemaToContext (x, tau1') theta1')) e2
           return (theta1 `cat` s `cat` theta2, tau2)
-
-inferProgType :: Expr -> Maybe Type
-inferProgType = fmap snd . infer emptyContext
