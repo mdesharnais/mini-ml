@@ -61,55 +61,55 @@ instance Show ExprNF where
 
 -- Expression -> normal form
 
-nfBinOp :: Expr -> Expr -> (AtomicExpr -> AtomicExpr -> ComplexExpr) ->
+nfBinOp :: Expr ty -> Expr ty -> (AtomicExpr -> AtomicExpr -> ComplexExpr) ->
   (Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNF) -> NameGen ExprNF
 nfBinOp e1 e2 op s k = nf e1 s (\a -> nf e2 s (\b -> do
   c <- fresh
   d <- k (AVar c)
   return (ELet c (op a b) d)))
 
-nf :: Expr ->
+nf :: Expr ty ->
   (Id -> AtomicExpr) ->
   (AtomicExpr -> NameGen ExprNF) ->
   NameGen ExprNF
-nf (LitInt n) s k = k (ALitInt n)
-nf (LitBool b) s k = k (ALitBool b)
-nf (Var x) s k = k (s x)
-nf (ExternVar x) s k = k (AExternVar x)
-nf (OpAdd e1 e2) s k = nfBinOp e1 e2 COpAdd s k
-nf (OpSub e1 e2) s k = nfBinOp e1 e2 COpSub s k
-nf (OpMul e1 e2) s k = nfBinOp e1 e2 COpMul s k
-nf (OpDiv e1 e2) s k = nfBinOp e1 e2 COpDiv s k
-nf (OpLT e1 e2) s k = nfBinOp e1 e2 COpLT s k
-nf (OpEQ e1 e2) s k = nfBinOp e1 e2 COpEQ s k
-nf (If e1 e2 e3) s k = nf e1 s (\e1' -> do
+nf (LitInt    _ n) s k = k (ALitInt n)
+nf (LitBool   _ b) s k = k (ALitBool b)
+nf (Var       _ x) s k = k (s x)
+nf (ExternVar _ x) s k = k (AExternVar x)
+nf (OpAdd     _ e1 e2) s k = nfBinOp e1 e2 COpAdd s k
+nf (OpSub     _ e1 e2) s k = nfBinOp e1 e2 COpSub s k
+nf (OpMul     _ e1 e2) s k = nfBinOp e1 e2 COpMul s k
+nf (OpDiv     _ e1 e2) s k = nfBinOp e1 e2 COpDiv s k
+nf (OpLT      _ e1 e2) s k = nfBinOp e1 e2 COpLT s k
+nf (OpEQ      _ e1 e2) s k = nfBinOp e1 e2 COpEQ s k
+nf (If        _ e1 e2 e3) s k = nf e1 s (\e1' -> do
   a <- fresh
   e2' <- nf e2 s (return . EVal)
   e3' <- nf e3 s (return . EVal)
   b <- k (AVar a)
   return (ELet a (CIf e1' e2' e3') b))
-nf (Let x e1 e2) s k =
+nf (Let _ x e1 e2) s k =
   nf e1 s (\a -> nf e2 (\y -> if y == x then a else s y) (return . EVal))
-nf (LetRec f (x, e1) e2) s k = do
+nf (LetRec _ f (_, x, e1) e2) s k = do
   a <- fresh
   let subst y = if y == f then AVar a else s y
   e1' <- nf e1 subst (return . EVal)
   e2' <- nf e2 subst (return . EVal)
   return (ELetRec a (x, e1') e2')
-nf (Abs x e) s k = do
+nf (Abs _ x e) s k = do
   a <- fresh
   b <- nf e s (return . EVal)
   c <- k (AVar a)
   return (ELet a (CAbs x b) c)
-nf (App e1 e2) s k = nf e1 s (\e1' -> nf e2 s (\e2' -> do
+nf (App _ e1 e2) s k = nf e1 s (\e1' -> nf e2 s (\e2' -> do
   a <- fresh
   d <- k (AVar a)
   return (ELet a (CApp e1' e2') d)))
 
-toNormalFormM :: Expr -> NameGen ExprNF
+toNormalFormM :: Expr ty -> NameGen ExprNF
 toNormalFormM e = nf e AVar (return . EVal)
 
-toNormalForm :: Expr -> ExprNF
+toNormalForm :: Expr ty -> ExprNF
 toNormalForm = runNameGen . toNormalFormM
 
 -- Intermediate language in normal form with closures

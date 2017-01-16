@@ -11,34 +11,39 @@ import Test.HUnit
 import Type(Type(..))
 
 litBool = [
-    ("true", LitBool True),
-    ("false", LitBool False)
+    ("true", LitBool () True),
+    ("false", LitBool () False)
   ]
 
 litInt min max =
   let
     impl n xs =
-      if n >= max then xs else impl (n + 1) ((show n, LitInt n) : xs)
+      if n >= max then xs else impl (n + 1) ((show n, LitInt () n) : xs)
   in
     impl min []
 
 variables = [
-    ("a", Var "a"),
-    ("ab", Var "ab"),
-    ("ab1", Var "ab1"),
-    ("ab12", Var "ab12"),
-    ("ab121", Var "ab121"),
-    ("ab121b", Var "ab121b"),
-    ("ab121ba", Var "ab121ba")
+    ("a", Var () "a"),
+    ("ab", Var () "ab"),
+    ("ab1", Var () "ab1"),
+    ("ab12", Var () "ab12"),
+    ("ab121", Var () "ab121"),
+    ("ab121b", Var () "ab121b"),
+    ("ab121ba", Var () "ab121ba")
   ]
 
 functions = [
     ("let min = fun x -> fun y -> if x < y then x else y in min 3 5",
-      Let "min"
-        (Abs "x" (Abs "y" (If (OpLT (Var "x") (Var "y")) (Var "x") (Var "y"))))
-        (App (App (Var "min") (LitInt 3)) (LitInt 5))),
+      Let () "min"
+        (Abs () "x" (Abs () "y"
+          (If () (OpLT () (Var () "x") (Var () "y"))
+            (Var () "x")
+            (Var () "y"))))
+        (App () (App () (Var () "min") (LitInt () 3)) (LitInt () 5))),
     ("1 * 2 < 3 * 4",
-      OpLT (OpMul (LitInt 1) (LitInt 2)) (OpMul (LitInt 3) (LitInt 4)))
+      OpLT ()
+        (OpMul () (LitInt () 1) (LitInt () 2))
+        (OpMul () (LitInt () 3) (LitInt () 4)))
   ]
 
 testCases =
@@ -242,7 +247,7 @@ closureTests = [
 
   ]
 
-testCompilation :: (String, Expr) -> Test
+testCompilation :: (String, Expr ()) -> Test
 testCompilation (prog, expected) =
   TestLabel ("program is '" ++ prog ++ "'") $
     TestCase $
@@ -265,7 +270,7 @@ testTypeInference (ctxt, prog, ty) =
             Just (subst, inferedTy) -> assertEqual (show subst) ty inferedTy
             Nothing -> assertFailure "did not type checked"
 
-testInterpreter :: (String, Value) -> Test
+testInterpreter :: (String, Value ()) -> Test
 testInterpreter (prog, val) =
   let term = Parser.parse (Lexer.alexScanTokens prog)
    in TestLabel ("program '" ++ prog ++ "' evaluate to '" ++ show val ++ "'") $
