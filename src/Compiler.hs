@@ -5,7 +5,7 @@ module Compiler where
 import qualified Data.List
 
 import Data.List((\\))
-import Expr(TyExpr(..), Expr, Id)
+import Expr(Expr(..), Id)
 import FreshName
 
 -- Intermediate language in normal form
@@ -90,13 +90,13 @@ nf (If e1 e2 e3) s k = nf e1 s (\e1' -> do
   return (ELet a (CIf e1' e2' e3') b))
 nf (Let x e1 e2) s k =
   nf e1 s (\a -> nf e2 (\y -> if y == x then a else s y) (return . EVal))
-nf (LetRec f ((x, ty), e1) e2) s k = do
+nf (LetRec f (x, e1) e2) s k = do
   a <- fresh
   let subst y = if y == f then AVar a else s y
   e1' <- nf e1 subst (return . EVal)
   e2' <- nf e2 subst (return . EVal)
   return (ELetRec a (x, e1') e2')
-nf (Abs (x, _) e) s k = do
+nf (Abs x e) s k = do
   a <- fresh
   b <- nf e s (return . EVal)
   c <- k (AVar a)
