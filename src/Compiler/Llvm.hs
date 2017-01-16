@@ -241,7 +241,7 @@ compileCo (CCIf  b e1 e2) s = do
   let stmt7 = Phi beta [(e1Label, e1'), (e2Label, e2')]
   addInstrs [stmt5, stmt6, stmt7]
   return (VId beta)
-compileCo (CCClosure (x, _) e env) s = do
+compileCo (CCClosure x e env) s = do
   let envSize = toInteger (length env)
   alpha <- freshFunctionName
   (e', cs) <- MonadTrans.lift (State.runStateT (do
