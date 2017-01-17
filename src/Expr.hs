@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveFunctor #-}
+
 module Expr where
 
 type Id = String
@@ -18,7 +20,7 @@ data Expr ty =
   LetRec    ty Id (ty, Id, (Expr ty)) (Expr ty) |
   Abs       ty Id (Expr ty) |
   App       ty (Expr ty) (Expr ty)
-  deriving (Eq)
+  deriving (Eq, Functor)
 
 getType :: Expr ty -> ty
 getType (LitInt    ty _) = ty
@@ -40,7 +42,7 @@ getType (App       ty _ _) = ty
 instance Show ty => Show (Expr ty) where
   show (LitInt _ n) = show n
   show (LitBool _ b) = show b
-  show (Var _ x) = x
+  show (Var ty x) = "(" ++ x ++ " : " ++ show ty ++ ")"
   show (ExternVar _ x) = x
   show (OpAdd _ e1 e2) = "(" ++ show e1 ++ " + " ++ show e2 ++ ")"
   show (OpSub _ e1 e2) = "(" ++ show e1 ++ " - " ++ show e2 ++ ")"
@@ -51,7 +53,8 @@ instance Show ty => Show (Expr ty) where
   show (If _ e1 e2 e3) =
     "if " ++ show e1 ++ " then " ++ show e2 ++ " else " ++ show e3
   show (Let _ x e1 e2) =
-    "let " ++ x ++ " = " ++ show e1 ++ " in " ++ show e2
+    "let " ++ x ++ " : " ++ show (getType e1) ++ " = " ++
+    show e1 ++ " in " ++ show e2
   show (LetRec _ f (ty, x, e1) e2) =
     "let rec " ++ f ++ " : " ++ show ty ++ " = " ++
     "fun " ++ x ++ " -> " ++ show e1 ++ " in " ++ show e2
