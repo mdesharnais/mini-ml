@@ -159,41 +159,40 @@ testInference =
         ("x", (Var (TVar "x1")) "x")
         (If TInt (App TBool (Var (TFun TBool TBool) "f") (bool True))
           (App TInt (Var (TFun TInt TInt) "f") (int 3))
-          (App TInt (Var (TFun TInt TInt) "f") (int 4)))))
---    (Type.emptyContext,
---      "let not = fun b -> if b then b else false in " ++
---      "let rec foo = fun b -> fun x -> fun y -> " ++
---        "if b then x else foo (not b) y x in " ++
---      "foo false 1 1",
---        Let TInt "not"
---          (Abs (TSType (TFun TBool TBool)) "b"
---            (If TBool (Var TBool "b")
---              (Var TBool "b")
---              (bool False)))
---          (LetRec TInt "foo"
---            (TSForall "x0" (TSType (TFun TBool
---              (TFun (TVar "x0") (TFun (TVar "x0") (TVar "x0"))))), "b",
---              Abs (TSForall "x0" (TSType (TFun (TVar "x0")
---                (TFun (TVar "x0") (TVar "x0"))))) "x"
---                (Abs (TSForall "x0" (TSType (TFun (TVar "x0") (TVar "x0")))) "y"
---                  (If (TSType (TVar "x0")) (Var TBool "b")
---                    (Var (TSType (TVar "x0")) "x")
---                    (App (TSType (TVar "x0"))
---                      (App (TSType (TFun (TVar "x0") (TVar "x0")))
---                        (App (TSType (TFun (TVar "x0") (TFun (TVar "x0") (TVar "x0"))))
---                          (Var (TSType (TFun TBool (TFun (TVar "x0") (TFun (TVar "x0") (TVar "x0"))))) "foo")
---                          (App TBool
---                            (Var (TSType (TFun TBool TBool)) "not")
---                            (Var TBool "b")))
---                        (Var (TSType (TVar "x0")) "y"))
---                      (Var (TSType (TVar "x0")) "x")))))
---            (App TInt
---              (App (TSType (TFun TInt TInt))
---                (App (TSType (TFun TInt (TFun TInt TInt)))
---                  (Var (TSType (TFun TBool (TFun TInt (TFun TInt TInt)))) "foo")
---                  (bool False))
---                (int 1))
---              (int 1))))
+          (App TInt (Var (TFun TInt TInt) "f") (int 4))))),
+    (Type.emptyContext,
+      "let not = fun b -> if b then b else false in " ++
+      "let rec foo = fun b -> fun x -> fun y -> " ++
+        "if b then x else foo (not b) y x in " ++
+      "foo false 1 1",
+        Let TInt ("not", TSType (TFun TBool TBool))
+          (Abs (TFun TBool TBool) "b"
+            (If TBool (Var TBool "b")
+              (Var TBool "b")
+              (bool False)))
+          (LetRec TInt ("foo", TSForall "x8" (TSType
+            (TFun TBool (TFun (TVar "x8") (TFun (TVar "x8") (TVar "x8"))))))
+            ("b",
+              Abs (TFun (TVar "x8") (TFun (TVar "x8") (TVar "x8"))) "x"
+                (Abs (TFun (TVar "x8") (TVar "x8")) "y"
+                  (If (TVar "x8") (Var TBool "b")
+                    (Var (TVar "x8") "x")
+                    (App (TVar "x8")
+                      (App (TFun (TVar "x8") (TVar "x8"))
+                        (App (TFun (TVar "x8") (TFun (TVar "x8") (TVar "x8")))
+                          (Var (TFun TBool (TFun (TVar "x8") (TFun (TVar "x8") (TVar "x8")))) "foo")
+                          (App TBool
+                            (Var (TFun TBool TBool) "not")
+                            (Var TBool "b")))
+                        (Var (TVar "x8") "y"))
+                      (Var (TVar "x8") "x")))))
+            (App TInt
+              (App (TFun TInt TInt)
+                (App (TFun TInt (TFun TInt TInt))
+                  (Var (TFun TBool (TFun TInt (TFun TInt TInt))) "foo")
+                  (bool False))
+                (int 1))
+              (int 1))))
     -- (Type.emptyContext, "fun fix -> fun f -> f (fun y -> fix f y)",
     --   TFun (TFun (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5")) (TFun (TVar
     --   "x2") (TVar "x4"))) (TFun (TFun (TFun (TVar "x2") (TVar "x4")) (TVar

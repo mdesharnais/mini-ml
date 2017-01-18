@@ -1,12 +1,12 @@
 module Type where
 
 import qualified Control.Monad
-import qualified Data.Bifunctor
 import qualified Data.List
 import qualified Data.Maybe
 import qualified Expr
 
 import Control.Monad.Trans(lift)
+import Data.Bifunctor(bimap)
 import Data.List((\\))
 import Expr(Expr(..))
 import FreshName
@@ -92,7 +92,11 @@ applyOnType s t = t
 
 applyOnTypeSchema :: Subst -> TypeSchema -> TypeSchema
 applyOnTypeSchema s (TSType ty) = TSType (applyOnType s ty)
-applyOnTypeSchema s (TSForall x ts) = TSForall x (applyOnTypeSchema s ts)
+applyOnTypeSchema s (TSForall x ts) =
+  let ts' = applyOnTypeSchema s ts in
+  case Data.List.lookup x s of
+    Nothing -> TSForall x ts'
+    Just _ -> ts'
 
 applyOnContext :: Subst -> Context -> Context
 applyOnContext s = map (\(x, tySchema) -> (x, applyOnTypeSchema s tySchema))
@@ -127,7 +131,7 @@ infer c e = do
   case runNameGenTWithout (extractTypeVars c) (impl c e) of
     Nothing -> Nothing
     Just (s, expr) ->
-      Just (s, Data.Bifunctor.bimap (applyOnTypeSchema s) (applyOnType s) expr)
+      Just (s, bimap (applyOnTypeSchema s) (applyOnType s) expr)
   where cat = concatSubst
         app = applyOnContext
 
