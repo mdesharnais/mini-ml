@@ -1,28 +1,28 @@
-{-# LANGUAGE DeriveFunctor #-}
-
 module Expr where
+
+import Data.Bifunctor
 
 type Id = String
 
-data Expr ty =
+data Expr tySch ty =
   LitInt    ty Integer |
   LitBool   ty Bool |
   Var       ty Id |
   ExternVar ty Id |
-  OpAdd     ty (Expr ty) (Expr ty) |
-  OpSub     ty (Expr ty) (Expr ty) |
-  OpMul     ty (Expr ty) (Expr ty) |
-  OpDiv     ty (Expr ty) (Expr ty) |
-  OpLT      ty (Expr ty) (Expr ty) |
-  OpEQ      ty (Expr ty) (Expr ty) |
-  If        ty (Expr ty) (Expr ty) (Expr ty) |
-  Let       ty (Id, ty) (Expr ty) (Expr ty) |
-  LetRec    ty (Id, ty) (Id, (Expr ty)) (Expr ty) |
-  Abs       ty Id (Expr ty) |
-  App       ty (Expr ty) (Expr ty)
-  deriving (Eq, Functor)
+  OpAdd     ty (Expr tySch ty) (Expr tySch ty) |
+  OpSub     ty (Expr tySch ty) (Expr tySch ty) |
+  OpMul     ty (Expr tySch ty) (Expr tySch ty) |
+  OpDiv     ty (Expr tySch ty) (Expr tySch ty) |
+  OpLT      ty (Expr tySch ty) (Expr tySch ty) |
+  OpEQ      ty (Expr tySch ty) (Expr tySch ty) |
+  If        ty (Expr tySch ty) (Expr tySch ty) (Expr tySch ty) |
+  Let       ty (Id, tySch) (Expr tySch ty) (Expr tySch ty) |
+  LetRec    ty (Id, tySch) (Id, (Expr tySch ty)) (Expr tySch ty) |
+  Abs       ty Id (Expr tySch ty) |
+  App       ty (Expr tySch ty) (Expr tySch ty)
+  deriving (Eq)
 
-getType :: Expr ty -> ty
+getType :: Expr sch ty -> ty
 getType (LitInt    ty _) = ty
 getType (LitBool   ty _) = ty
 getType (Var       ty _) = ty
@@ -39,7 +39,27 @@ getType (LetRec    ty _ _ _) = ty
 getType (Abs       ty _ _) = ty
 getType (App       ty _ _) = ty
 
-instance Show ty => Show (Expr ty) where
+instance Bifunctor Expr where
+  bimap f g (LitInt    ty n) = LitInt    (g ty) n
+  bimap f g (LitBool   ty b) = LitBool   (g ty) b
+  bimap f g (Var       ty x) = Var       (g ty) x
+  bimap f g (ExternVar ty x) = ExternVar (g ty) x
+  bimap f g (OpAdd     ty e1 e2) = OpAdd (g ty) (bimap f g e1) (bimap f g e2)
+  bimap f g (OpSub     ty e1 e2) = OpSub (g ty) (bimap f g e1) (bimap f g e2)
+  bimap f g (OpMul     ty e1 e2) = OpMul (g ty) (bimap f g e1) (bimap f g e2)
+  bimap f g (OpDiv     ty e1 e2) = OpDiv (g ty) (bimap f g e1) (bimap f g e2)
+  bimap f g (OpLT      ty e1 e2) = OpLT  (g ty) (bimap f g e1) (bimap f g e2)
+  bimap f g (OpEQ      ty e1 e2) = OpEQ  (g ty) (bimap f g e1) (bimap f g e2)
+  bimap f g (If        ty e e1 e2) =
+    If (g ty) (bimap f g e) (bimap f g e1) (bimap f g e2)
+  bimap f g (Let       ty (x, xTy) e1 e2) =
+    Let (g ty) (x, f xTy) (bimap f g e1) (bimap f g e2)
+  bimap f g (LetRec    ty (y, yTy) (x, e1) e2) =
+    LetRec (g ty) (y, f yTy) (x, (bimap f g e1)) (bimap f g e2)
+  bimap f g (Abs       ty x e) = Abs (g ty) x (bimap f g e)
+  bimap f g (App       ty e1 e2) = App (g ty) (bimap f g e1) (bimap f g e2)
+
+instance (Show tySch, Show ty) => Show (Expr tySch ty) where
   show (LitInt _ n) = show n
   show (LitBool _ b) = show b
   show (Var ty x) = "(" ++ x ++ " : " ++ show ty ++ ")"

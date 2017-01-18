@@ -4,9 +4,9 @@ import qualified Data.List
 
 import Expr(Expr(..))
 
-type Env ty = [(String, Value ty)]
-data Value ty =
-  Closure String (Expr ty) (Env ty) |
+type Env tySch ty = [(String, Value tySch ty)]
+data Value tySch ty =
+  Closure String (Expr tySch ty) (Env tySch ty) |
   ConstInt Integer |
   ConstBool Bool
   deriving (Eq, Show)
@@ -18,7 +18,7 @@ evalBinOpInt env t1 t2 result f = do
     (ConstInt n1, ConstInt n2) -> Just (result (f n1 n2))
     _ -> Nothing
 
-eval :: Env ty -> Expr ty -> Maybe (Value ty)
+eval :: Env tySch ty -> Expr tySch ty -> Maybe (Value tySch ty)
 eval env (Var _ x) = Data.List.lookup x env
 eval env (Abs _ x t) = Just (Closure x t env)
 eval env (App _ t1 t2) = do

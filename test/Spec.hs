@@ -64,134 +64,130 @@ testEquivalences = [
      "let min = (fun x -> (fun y -> (if (x < y) then x else y))) in ((min 2) 3)")
   ]
 
+testInference :: [(Type.Context, String, Expr TypeSchema Type)]
 testInference =
-  let intTy = TSType TInt in
-  let int = LitInt intTy in
-  let boolTy = TSType TBool in
-  let bool = LitBool (TSType TBool) in [
+  let int = LitInt TInt in
+  let bool = LitBool TBool in [
     (Type.emptyContext, "true", bool True),
     (Type.emptyContext, "false", bool False),
     (Type.emptyContext, "1", int 1),
     (Type.emptyContext, "12", int 12),
     (Type.emptyContext, "123", int 123),
-    (Type.emptyContext, "3 - 2", OpSub intTy (int 3) (int 2)),
-    (Type.emptyContext, "3 + 2", OpAdd intTy (int 3) (int 2)),
-    (Type.emptyContext, "3 * 2", OpMul intTy (int 3) (int 2)),
-    (Type.emptyContext, "3 / 2", OpDiv intTy (int 3) (int 2)),
-    (Type.emptyContext, "3 < 2", OpLT boolTy (int 3) (int 2)),
-    (Type.emptyContext, "3 = 2", OpEQ boolTy (int 3) (int 2)),
+    (Type.emptyContext, "3 - 2", OpSub TInt (int 3) (int 2)),
+    (Type.emptyContext, "3 + 2", OpAdd TInt (int 3) (int 2)),
+    (Type.emptyContext, "3 * 2", OpMul TInt (int 3) (int 2)),
+    (Type.emptyContext, "3 / 2", OpDiv TInt (int 3) (int 2)),
+    (Type.emptyContext, "3 < 2", OpLT TBool (int 3) (int 2)),
+    (Type.emptyContext, "3 = 2", OpEQ TBool (int 3) (int 2)),
     (Type.emptyContext, "if true then 0 else 1",
-      If intTy (bool True) (int 0) (int 1)),
+      If TInt (bool True) (int 0) (int 1)),
     (Type.emptyContext, "extern f",
-      ExternVar (TSType (TFun TInt TInt)) "f"),
+      ExternVar (TFun TInt TInt) "f"),
     (Type.emptyContext, "fun x -> x",
-      Abs (TSType (TFun (TVar "x0") (TVar "x0"))) "x"
-        (Var (TSType (TVar "x0")) "x")),
+      Abs (TFun (TVar "x0") (TVar "x0")) "x" (Var (TVar "x0") "x")),
     (Type.emptyContext, "fun x -> true",
-      Abs (TSType (TFun (TVar "x0") TBool)) "x"
-        (bool True)),
+      Abs (TFun (TVar "x0") TBool) "x" (bool True)),
     (Type.emptyContext, "let x = true in 3",
-      Let intTy ("x", boolTy) (bool True) (int 3)),
+      Let TInt ("x", TSType TBool) (bool True) (int 3)),
     (Type.emptyContext, "let min = fun x -> fun y -> if x < y then x else y in min 2 3",
-      Let intTy ("min", (TSType (TFun TInt (TFun TInt TInt))))
-        (Abs (TSType (TFun TInt (TFun TInt TInt))) "x"
-          (Abs (TSType (TFun TInt TInt)) "y"
-            (If intTy (OpLT boolTy (Var intTy "x") (Var intTy "y"))
-              (Var intTy "x")
-              (Var intTy "y"))))
-        (App intTy
-          (App (TSType (TFun TInt TInt))
-            (Var (TSType (TFun TInt (TFun TInt TInt))) "min")
+      Let TInt ("min", (TSType (TFun TInt (TFun TInt TInt))))
+        (Abs (TFun TInt (TFun TInt TInt)) "x"
+          (Abs (TFun TInt TInt) "y"
+            (If TInt (OpLT TBool (Var TInt "x") (Var TInt "y"))
+              (Var TInt "x")
+              (Var TInt "y"))))
+        (App TInt
+          (App (TFun TInt TInt)
+            (Var (TFun TInt (TFun TInt TInt)) "min")
             (int 2))
           (int 3))),
     (Type.emptyContext, "let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3",
-      LetRec intTy ("sum", TSType (TFun TInt TInt))
+      LetRec TInt ("sum", TSType (TFun TInt TInt))
         ("n",
-          (If intTy (OpEQ boolTy (Var intTy "n") (int 0))
+          (If TInt (OpEQ TBool (Var TInt "n") (int 0))
             (int 0)
-            (OpAdd intTy
-              (Var intTy "n")
-              (App intTy
-                (Var (TSType (TFun TInt TInt)) "sum")
-                (OpSub intTy (Var intTy "n") (int 1))))))
-        (App intTy (Var (TSType (TFun TInt TInt)) "sum") (int 3))),
+            (OpAdd TInt
+              (Var TInt "n")
+              (App TInt
+                (Var (TFun TInt TInt) "sum")
+                (OpSub TInt (Var TInt "n") (int 1))))))
+        (App TInt (Var (TFun TInt TInt) "sum") (int 3))),
     (Type.emptyContext, "let f = fun x -> fun y -> if true then x else y in f 2 3",
-      Let intTy ("f", TSForall "x1" (TSType (TFun (TVar "x1") (TFun (TVar "x1") (TVar "x1")))))
-        (Abs (TSType (TFun (TVar "x1") (TFun (TVar "x1") (TVar "x1")))) "x"
-          (Abs (TSType (TFun (TVar "x1") (TVar "x1"))) "y"
-            (If (TSType (TVar "x1")) (bool True)
-              (Var (TSType (TVar "x1")) "x")
-              (Var (TSType (TVar "x1")) "y"))))
-          (App (TSType TInt)
-            (App (TSType (TFun TInt TInt))
-              (Var (TSType (TFun TInt (TFun TInt TInt))) "f")
+      Let TInt ("f", TSForall "x1" (TSType (TFun (TVar "x1") (TFun (TVar "x1") (TVar "x1")))))
+        (Abs (TFun (TVar "x1") (TFun (TVar "x1") (TVar "x1"))) "x"
+          (Abs (TFun (TVar "x1") (TVar "x1")) "y"
+            (If (TVar "x1") (bool True)
+              (Var (TVar "x1") "x")
+              (Var (TVar "x1") "y"))))
+          (App TInt
+            (App (TFun TInt TInt)
+              (Var (TFun TInt (TFun TInt TInt)) "f")
               (int 2))
           (int 3))),
     (Type.emptyContext, "let f = fun b -> fun x -> fun y -> if b then x else y in f true 2 3",
-      Let intTy ("f", (TSForall "x2" (TSType
+      Let TInt ("f", (TSForall "x2" (TSType
           (TFun TBool (TFun (TVar "x2") (TFun (TVar "x2") (TVar "x2")))))))
-        (Abs (TSType
-          (TFun TBool (TFun (TVar "x2") (TFun (TVar "x2") (TVar "x2"))))) "b"
-          (Abs (TSType (TFun (TVar "x2") (TFun (TVar "x2") (TVar "x2")))) "x"
-            (Abs (TSType (TFun (TVar "x2") (TVar "x2"))) "y"
-              (If (TSType (TVar "x2")) (Var boolTy "b")
-                (Var (TSType (TVar "x2")) "x")
-                (Var (TSType (TVar "x2")) "y")))))
-        (App (TSType TInt)
-          (App (TSType (TFun TInt TInt))
-            (App (TSType (TFun TInt (TFun TInt TInt)))
-              (Var (TSType (TFun TBool (TFun TInt (TFun TInt TInt)))) "f")
+        (Abs (TFun TBool (TFun (TVar "x2") (TFun (TVar "x2") (TVar "x2")))) "b"
+          (Abs (TFun (TVar "x2") (TFun (TVar "x2") (TVar "x2"))) "x"
+            (Abs (TFun (TVar "x2") (TVar "x2")) "y"
+              (If (TVar "x2") (Var TBool "b")
+                (Var (TVar "x2") "x")
+                (Var (TVar "x2") "y")))))
+        (App TInt
+          (App (TFun TInt TInt)
+            (App (TFun TInt (TFun TInt TInt))
+              (Var (TFun TBool (TFun TInt (TFun TInt TInt))) "f")
               (bool True))
             (int 2))
           (int 3))),
     (Type.emptyContext, "let i = fun x -> x in if i true then i 1 else i 2",
-      Let intTy ("i", TSForall "x0" (TSType (TFun (TVar "x0") (TVar "x0"))))
-        (Abs (TSType (TFun (TVar "x0") (TVar "x0"))) "x"
-          (Var (TSType (TVar "x0")) "x"))
-        (If intTy (App boolTy (Var (TSType (TFun TBool TBool)) "i") (bool True))
-          (App intTy (Var (TSType (TFun TInt TInt)) "i") (int 1))
-          (App intTy (Var (TSType (TFun TInt TInt)) "i") (int 2)))),
+      Let TInt ("i", TSForall "x0" (TSType (TFun (TVar "x0") (TVar "x0"))))
+        (Abs (TFun (TVar "x0") (TVar "x0")) "x"
+          (Var (TVar "x0") "x"))
+        (If TInt (App TBool (Var (TFun TBool TBool) "i") (bool True))
+          (App TInt (Var (TFun TInt TInt) "i") (int 1))
+          (App TInt (Var (TFun TInt TInt) "i") (int 2)))),
     (Type.emptyContext, "let foo = fun b -> if b then true else false in foo true",
-      Let boolTy ("foo", (TSType (TFun TBool TBool)))
-        (Abs (TSType (TFun TBool TBool)) "b"
-          (If boolTy (Var boolTy "b")
+      Let TBool ("foo", (TSType (TFun TBool TBool)))
+        (Abs (TFun TBool TBool) "b"
+          (If TBool (Var TBool "b")
             (bool True)
             (bool False)))
-        (App boolTy (Var (TSType (TFun TBool TBool)) "foo") (bool True))),
+        (App TBool (Var (TFun TBool TBool) "foo") (bool True))),
     (Type.emptyContext, "let rec f = fun x -> x in if f true then f 3 else f 4",
-      (LetRec intTy ("f", TSForall "x1" (TSType (TFun (TVar "x1") (TVar "x1"))))
-        ("x", (Var (TSType (TVar "x1"))) "x")
-        (If intTy (App boolTy (Var (TSType (TFun TBool TBool)) "f") (bool True))
-          (App intTy (Var (TSType (TFun TInt TInt)) "f") (int 3))
-          (App intTy (Var (TSType (TFun TInt TInt)) "f") (int 4)))))
+      (LetRec TInt ("f", TSForall "x1" (TSType (TFun (TVar "x1") (TVar "x1"))))
+        ("x", (Var (TVar "x1")) "x")
+        (If TInt (App TBool (Var (TFun TBool TBool) "f") (bool True))
+          (App TInt (Var (TFun TInt TInt) "f") (int 3))
+          (App TInt (Var (TFun TInt TInt) "f") (int 4)))))
 --    (Type.emptyContext,
 --      "let not = fun b -> if b then b else false in " ++
 --      "let rec foo = fun b -> fun x -> fun y -> " ++
 --        "if b then x else foo (not b) y x in " ++
 --      "foo false 1 1",
---        Let intTy "not"
+--        Let TInt "not"
 --          (Abs (TSType (TFun TBool TBool)) "b"
---            (If boolTy (Var boolTy "b")
---              (Var boolTy "b")
+--            (If TBool (Var TBool "b")
+--              (Var TBool "b")
 --              (bool False)))
---          (LetRec intTy "foo"
+--          (LetRec TInt "foo"
 --            (TSForall "x0" (TSType (TFun TBool
 --              (TFun (TVar "x0") (TFun (TVar "x0") (TVar "x0"))))), "b",
 --              Abs (TSForall "x0" (TSType (TFun (TVar "x0")
 --                (TFun (TVar "x0") (TVar "x0"))))) "x"
 --                (Abs (TSForall "x0" (TSType (TFun (TVar "x0") (TVar "x0")))) "y"
---                  (If (TSType (TVar "x0")) (Var boolTy "b")
+--                  (If (TSType (TVar "x0")) (Var TBool "b")
 --                    (Var (TSType (TVar "x0")) "x")
 --                    (App (TSType (TVar "x0"))
 --                      (App (TSType (TFun (TVar "x0") (TVar "x0")))
 --                        (App (TSType (TFun (TVar "x0") (TFun (TVar "x0") (TVar "x0"))))
 --                          (Var (TSType (TFun TBool (TFun (TVar "x0") (TFun (TVar "x0") (TVar "x0"))))) "foo")
---                          (App boolTy
+--                          (App TBool
 --                            (Var (TSType (TFun TBool TBool)) "not")
---                            (Var boolTy "b")))
+--                            (Var TBool "b")))
 --                        (Var (TSType (TVar "x0")) "y"))
 --                      (Var (TSType (TVar "x0")) "x")))))
---            (App intTy
+--            (App TInt
 --              (App (TSType (TFun TInt TInt))
 --                (App (TSType (TFun TInt (TFun TInt TInt)))
 --                  (Var (TSType (TFun TBool (TFun TInt (TFun TInt TInt)))) "foo")
@@ -355,7 +351,7 @@ closureTests = [
 
   ]
 
-testCompilation :: (String, Expr ()) -> Test
+testCompilation :: (String, Expr () ()) -> Test
 testCompilation (prog, expected) =
   TestLabel ("program is '" ++ prog ++ "'") $
     TestCase $
@@ -369,7 +365,7 @@ testComparaison (prog1, prog2) =
         (Parser.parse (Lexer.alexScanTokens prog1))
         (Parser.parse (Lexer.alexScanTokens prog2))
 
-testTypeInference :: (Type.Context, String, Expr TypeSchema) -> Test
+testTypeInference :: (Type.Context, String, Expr TypeSchema Type) -> Test
 testTypeInference (ctxt, prog, expr) =
   let term = Parser.parse (Lexer.alexScanTokens prog)
    in TestLabel ("program '" ++ prog ++ "' has type '" ++
@@ -380,7 +376,7 @@ testTypeInference (ctxt, prog, expr) =
               assertEqual (show subst) expr expr'
             Nothing -> assertFailure "did not type checked"
 
-testInterpreter :: (String, Value ()) -> Test
+testInterpreter :: (String, Value () ()) -> Test
 testInterpreter (prog, val) =
   let term = Parser.parse (Lexer.alexScanTokens prog)
    in TestLabel ("program '" ++ prog ++ "' evaluate to '" ++ show val ++ "'") $

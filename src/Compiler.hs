@@ -61,14 +61,14 @@ instance Show ExprNF where
 
 -- Expression -> normal form
 
-nfBinOp :: Expr ty -> Expr ty -> (AtomicExpr -> AtomicExpr -> ComplexExpr) ->
+nfBinOp :: Expr tySch ty -> Expr tySch ty -> (AtomicExpr -> AtomicExpr -> ComplexExpr) ->
   (Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNF) -> NameGen ExprNF
 nfBinOp e1 e2 op s k = nf e1 s (\a -> nf e2 s (\b -> do
   c <- fresh
   d <- k (AVar c)
   return (ELet c (op a b) d)))
 
-nf :: Expr ty ->
+nf :: Expr tySch ty ->
   (Id -> AtomicExpr) ->
   (AtomicExpr -> NameGen ExprNF) ->
   NameGen ExprNF
@@ -106,10 +106,10 @@ nf (App _ e1 e2) s k = nf e1 s (\e1' -> nf e2 s (\e2' -> do
   d <- k (AVar a)
   return (ELet a (CApp e1' e2') d)))
 
-toNormalFormM :: Expr ty -> NameGen ExprNF
+toNormalFormM :: Expr tySch ty -> NameGen ExprNF
 toNormalFormM e = nf e AVar (return . EVal)
 
-toNormalForm :: Expr ty -> ExprNF
+toNormalForm :: Expr tySch ty -> ExprNF
 toNormalForm = runNameGen . toNormalFormM
 
 -- Intermediate language in normal form with closures
