@@ -170,47 +170,131 @@ testInference =
             (If TBool (Var TBool "b")
               (Var TBool "b")
               (bool False)))
-          (LetRec TInt ("foo", TSForall "x8" (TSType
-            (TFun TBool (TFun (TVar "x8") (TFun (TVar "x8") (TVar "x8"))))))
-            ("b",
-              Abs (TFun (TVar "x8") (TFun (TVar "x8") (TVar "x8"))) "x"
-                (Abs (TFun (TVar "x8") (TVar "x8")) "y"
-                  (If (TVar "x8") (Var TBool "b")
-                    (Var (TVar "x8") "x")
-                    (App (TVar "x8")
-                      (App (TFun (TVar "x8") (TVar "x8"))
-                        (App (TFun (TVar "x8") (TFun (TVar "x8") (TVar "x8")))
-                          (Var (TFun TBool (TFun (TVar "x8") (TFun (TVar "x8") (TVar "x8")))) "foo")
-                          (App TBool
-                            (Var (TFun TBool TBool) "not")
-                            (Var TBool "b")))
-                        (Var (TVar "x8") "y"))
-                      (Var (TVar "x8") "x")))))
-            (App TInt
-              (App (TFun TInt TInt)
-                (App (TFun TInt (TFun TInt TInt))
-                  (Var (TFun TBool (TFun TInt (TFun TInt TInt))) "foo")
-                  (bool False))
-                (int 1))
-              (int 1))))
-    -- (Type.emptyContext, "fun fix -> fun f -> f (fun y -> fix f y)",
-    --   TFun (TFun (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5")) (TFun (TVar
-    --   "x2") (TVar "x4"))) (TFun (TFun (TFun (TVar "x2") (TVar "x4")) (TVar
-    --   "x5")) (TVar "x5"))),
-    -- (Type.emptyContext, "let rec fix = fun f -> f (fun y -> fix f y) in fix",
-    --   TFun (TFun ((TVar "x8") `TFun` (TVar "x7")) (TFun (TVar "x8") (TVar "x7"))) (TFun (TVar "x8") (TVar "x7"))),
-    -- (Type.emptyContext,
-    --   "fun f -> f (fun x -> f (fun y -> y))",
-    --   TFun (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) (TVar "x4")),
-    -- (Type.emptyContext,
-    --   "fun f -> f (fun x -> f (fun y -> x))",
-    --   TFun (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) (TVar "x4")),
-    -- (Type.singletonContext ("x", TInt), "x", TInt),
-    -- (Type.singletonContext ("f", TFun TInt TInt), "f", TFun TInt TInt),
-    -- (Type.singletonContext ("f", TFun TInt TInt), "f 3", TInt),
-    -- (Type.singletonContext ("x", TVar "x0"), "x - 1", TInt),
-    -- (Type.contextFromList [("x", TVar "x0"), ("y", TVar "x1")],
-    --   "x y", TVar "x2")
+        (LetRec TInt ("foo", TSForall "x8" (TSType
+          (TFun TBool (TFun (TVar "x8") (TFun (TVar "x8") (TVar "x8"))))))
+          ("b", Abs (TFun (TVar "x8") (TFun (TVar "x8") (TVar "x8"))) "x"
+            (Abs (TFun (TVar "x8") (TVar "x8")) "y"
+              (If (TVar "x8") (Var TBool "b")
+                (Var (TVar "x8") "x")
+                (App (TVar "x8")
+                  (App (TFun (TVar "x8") (TVar "x8"))
+                    (App (TFun (TVar "x8") (TFun (TVar "x8") (TVar "x8")))
+                      (Var (TFun TBool (TFun (TVar "x8")
+                        (TFun (TVar "x8") (TVar "x8")))) "foo")
+                      (App TBool
+                        (Var (TFun TBool TBool) "not")
+                        (Var TBool "b")))
+                    (Var (TVar "x8") "y"))
+                  (Var (TVar "x8") "x")))))
+          (App TInt
+            (App (TFun TInt TInt)
+              (App (TFun TInt (TFun TInt TInt))
+                (Var (TFun TBool (TFun TInt (TFun TInt TInt))) "foo")
+                (bool False))
+              (int 1))
+            (int 1)))),
+    (Type.emptyContext, "fun fix -> fun f -> f (fun y -> fix f y)",
+      Abs
+        (TFun
+          (TFun
+            (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5"))
+            (TFun (TVar "x2") (TVar "x4")))
+          (TFun
+            (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5"))
+            (TVar "x5")))
+        "fix"
+        (Abs
+          (TFun
+            (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5"))
+            (TVar "x5"))
+          "f"
+          (App (TVar "x5")
+            (Var (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5")) "f")
+            (Abs (TFun (TVar "x2") (TVar "x4")) "y"
+              (App (TVar "x4")
+                (App (TFun (TVar "x2") (TVar "x4"))
+                  (Var
+                    (TFun
+                      (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5"))
+                      (TFun (TVar "x2") (TVar "x4"))) "fix")
+                  (Var (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5")) "f"))
+                (Var (TVar "x2") "y")))))
+      ),
+    (Type.emptyContext, "let rec fix = fun f -> f (fun y -> fix f y) in fix",
+    LetRec
+      (TFun
+        (TFun
+          (TFun (TVar "x7") (TVar "x6"))
+          (TFun (TVar "x7") (TVar "x6")))
+        (TFun (TVar "x7") (TVar "x6")))
+      ("fix",
+        TSForall "x4" (TSForall "x2" (TSType (TFun
+          (TFun
+            (TFun (TVar "x2") (TVar "x4"))
+            (TFun (TVar "x2") (TVar "x4")))
+          (TFun (TVar "x2") (TVar "x4"))))))
+      ("f",
+        App (TFun (TVar "x2") (TVar "x4"))
+          (Var
+            (TFun
+              (TFun (TVar "x2") (TVar "x4"))
+              (TFun (TVar "x2") (TVar "x4")))
+            "f")
+          (Abs (TFun (TVar "x2") (TVar "x4")) "y"
+            (App (TVar "x4")
+              (App (TFun (TVar "x2") (TVar "x4"))
+                (Var
+                  (TFun
+                    (TFun
+                      (TFun (TVar "x2") (TVar "x4"))
+                      (TFun (TVar "x2") (TVar "x4")))
+                    (TFun (TVar "x2") (TVar "x4")))
+                  "fix")
+                (Var
+                  (TFun
+                    (TFun (TVar "x2") (TVar "x4"))
+                    (TFun (TVar "x2") (TVar "x4")))
+                  "f"))
+              (Var (TVar "x2") "y"))))
+        (Var
+          (TFun
+            (TFun
+              (TFun (TVar "x7") (TVar "x6"))
+              (TFun (TVar "x7") (TVar "x6")))
+            (TFun (TVar "x7") (TVar "x6")))
+          "fix")),
+    (Type.emptyContext,
+      "fun f -> f (fun x -> f (fun y -> y))",
+      Abs (TFun (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) (TVar "x4")) "f"
+        (App (TVar "x4")
+          (Var (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) "f")
+          (Abs (TFun (TVar "x4") (TVar "x4")) "x"
+            (App (TVar "x4")
+              (Var (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) "f")
+              (Abs (TFun (TVar "x4") (TVar "x4")) "y"
+                (Var (TVar "x4") "y")))))),
+    (Type.emptyContext,
+      "fun f -> f (fun x -> f (fun y -> x))",
+      Abs (TFun (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) (TVar "x4")) "f"
+        (App (TVar "x4")
+          (Var (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) "f")
+          (Abs (TFun (TVar "x4") (TVar "x4")) "x"
+            (App (TVar "x4")
+              (Var (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) "f")
+              (Abs (TFun (TVar "x4") (TVar "x4")) "y"
+                (Var (TVar "x4") "x")))))),
+    (Type.singletonContext ("x", TInt), "x",
+      Var TInt "x"),
+    (Type.singletonContext ("f", TFun TInt TInt), "f",
+      Var (TFun TInt TInt) "f"),
+    (Type.singletonContext ("f", TFun TInt TInt), "f 3",
+      App TInt (Var (TFun TInt TInt) "f") (int 3)),
+    (Type.singletonContext ("x", TVar "x0"), "x - 1",
+      OpSub TInt (Var TInt "x") (int 1)),
+    (Type.contextFromList [("x", TVar "x0"), ("y", TVar "x1")], "x y",
+      App (TVar "x2")
+        (Var (TFun (TVar "x1") (TVar "x2")) "x")
+        (Var (TVar "x1") "y"))
   ]
 
 interpretationTests = [
