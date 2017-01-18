@@ -41,9 +41,9 @@ eval env (If _ t1 t2 t3) = do
     ConstBool True -> eval env t2
     ConstBool False -> eval env t3
     _ -> Nothing
-eval env (Let _ x t1 t2) = do
+eval env (Let _ (x, _) t1 t2) = do
   v1 <- eval env t1
   eval ((x, v1) : env) t2
-eval env (LetRec ty f (ty2, x, t1) t2) =
-  let closure = Closure x (LetRec ty f (ty2, x, t1) t1) env
+eval env (LetRec ty (f, ty2) (x, t1) t2) =
+  let closure = Closure x (LetRec ty (f, ty2) (x, t1) t1) env
    in eval ((f, closure) : env) t2

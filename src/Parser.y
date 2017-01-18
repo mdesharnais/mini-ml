@@ -73,8 +73,8 @@ ArithExp : Exp0 '+' Exp0      { OpAdd () $1 $3 }
          | Exp0 '=' Exp0      { OpEQ  () $1 $3 }
 
 Let :: { Expr () }
-Let : 'let' ID '=' Exp 'in' Exp                        { Let () $2 $4 $6 }
-    | 'let' 'rec' ID '=' 'fun' ID '->' Exp 'in' Exp    { LetRec () $3 ((), $6, $8) $10 }
+Let : 'let' ID '=' Exp 'in' Exp                        { Let () ($2, ()) $4 $6 }
+    | 'let' 'rec' ID '=' 'fun' ID '->' Exp 'in' Exp    { LetRec () ($3, ()) ($6, $8) $10 }
 
 If :: { Expr () }
 If : 'if' Exp 'then' Exp 'else' Exp     { If () $2 $4 $6 }

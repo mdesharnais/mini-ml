@@ -88,9 +88,9 @@ nf (If        _ e1 e2 e3) s k = nf e1 s (\e1' -> do
   e3' <- nf e3 s (return . EVal)
   b <- k (AVar a)
   return (ELet a (CIf e1' e2' e3') b))
-nf (Let _ x e1 e2) s k =
+nf (Let _ (x, _) e1 e2) s k =
   nf e1 s (\a -> nf e2 (\y -> if y == x then a else s y) (return . EVal))
-nf (LetRec _ f (_, x, e1) e2) s k = do
+nf (LetRec _ (f, _) (x, e1) e2) s k = do
   a <- fresh
   let subst y = if y == f then AVar a else s y
   e1' <- nf e1 subst (return . EVal)

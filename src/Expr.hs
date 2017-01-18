@@ -16,8 +16,8 @@ data Expr ty =
   OpLT      ty (Expr ty) (Expr ty) |
   OpEQ      ty (Expr ty) (Expr ty) |
   If        ty (Expr ty) (Expr ty) (Expr ty) |
-  Let       ty Id (Expr ty) (Expr ty) |
-  LetRec    ty Id (ty, Id, (Expr ty)) (Expr ty) |
+  Let       ty (Id, ty) (Expr ty) (Expr ty) |
+  LetRec    ty (Id, ty) (Id, (Expr ty)) (Expr ty) |
   Abs       ty Id (Expr ty) |
   App       ty (Expr ty) (Expr ty)
   deriving (Eq, Functor)
@@ -52,11 +52,12 @@ instance Show ty => Show (Expr ty) where
   show (OpEQ  _ e1 e2) = "(" ++ show e1 ++ " = " ++ show e2 ++ ")"
   show (If _ e1 e2 e3) =
     "if " ++ show e1 ++ " then " ++ show e2 ++ " else " ++ show e3
-  show (Let _ x e1 e2) =
-    "let " ++ x ++ " : " ++ show (getType e1) ++ " = " ++
+  show (Let _ (x, ty) e1 e2) =
+    "let " ++ x ++ " : " ++ show ty ++ " = " ++
     show e1 ++ " in " ++ show e2
-  show (LetRec _ f (ty, x, e1) e2) =
+  show (LetRec _ (f, ty) (x, e1) e2) =
     "let rec " ++ f ++ " : " ++ show ty ++ " = " ++
     "fun " ++ x ++ " -> " ++ show e1 ++ " in " ++ show e2
   show (Abs _ x e1) = "(fun " ++ x ++ " -> " ++ show e1 ++ ")"
-  show (App _ e1 e2) = show e1 ++ " " ++ show e2
+  show (App ty e1 e2) =
+    "(" ++ show e1 ++ " " ++ show e2 ++ " : " ++ show ty ++ ")"

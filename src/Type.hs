@@ -165,13 +165,8 @@ infer c e = do
         impl c (Abs _ x e) = do
           alpha <- genFreshTVar
           (s, e') <- impl (addContext (x, alpha) c) e
-          let tau = (TFun (applyOnType s alpha) (getType e'))
-          let s' = s `app` c
-          let fv = freeVars tau
-          --let tyVars = fv \\ (extractTypeVars s')
-          let tyVars = fv
-          let tau' = Data.List.foldl (flip TSForall) (TSType tau) tyVars
-          return (s, Abs tau' x e')
+          let tau = TSType (TFun (applyOnType s alpha) (getType e'))
+          return (s, Abs tau x e')
         impl c (App _ e1 e2) = do
           (s1, e1') <- impl c e1
           (s2, e2') <- impl (s1 `app` c) e2
@@ -198,12 +193,16 @@ infer c e = do
           theta3 <- lift $ unify (applyOnType theta2 (getType e1')) tau2
           return (s3 `cat` theta1 `cat` theta2 `cat` theta3,
             If (TSType (applyOnType theta3 tau2)) e' e1' e2')
-        impl c (Let _ x e1 e2) = do
+        impl c (Let _ (x, _) e1 e2) = do
           (theta1, e1') <- impl c e1
           let theta1' = theta1 `app` c
-          (theta2, e2') <- impl (addTySchemaToContext (x, Expr.getType e1') theta1') e2
-          return (theta1 `cat` theta2, Let (Expr.getType e2') x e1' e2')
-        impl c (LetRec _ x (ty, y, e1) e2) = do
+          let tau1 = getType e1'
+          let fv = freeVars tau1
+          let tyVars = fv \\ (extractTypeVars theta1')
+          let tau1' = Data.List.foldl (flip TSForall) (TSType tau1) tyVars
+          (theta2, e2') <- impl (addTySchemaToContext (x, tau1') theta1') e2
+          return (theta1 `cat` theta2, Let (Expr.getType e2') (x, tau1') e1' e2')
+        impl c (LetRec _ (x, ty) (y, e1) e2) = do
           alpha <- genFreshTVar
           (theta1, a@(Abs _ _ e1')) <-
             impl (addContext (x, alpha) c) (Abs ty y e1)
@@ -214,4 +213,4 @@ infer c e = do
           let tyVars = fv \\ (extractTypeVars (s `app` theta1'))
           let tau1' = Data.List.foldl (flip TSForall) (TSType tau1) tyVars
           (theta2, e2') <- impl (s `app` (addTySchemaToContext (x, tau1') theta1')) e2
-          return (theta1 `cat` s `cat` theta2, LetRec (Expr.getType e2') x (tau1', y, e1') e2')
+          return (theta1 `cat` s `cat` theta2, LetRec (Expr.getType e2') (x, tau1') (y, e1') e2')
