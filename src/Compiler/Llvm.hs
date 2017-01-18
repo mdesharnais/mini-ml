@@ -133,7 +133,7 @@ addInstrs :: [Instr] -> CompilationM ()
 addInstrs stmts = State.modify (\cs -> cs { csInstrs = csInstrs cs ++ stmts })
 
 addExternals :: [Id] -> CompilationM ()
-addExternals fs = State.modify (\cs -> cs { csExternVars = fs ++ csExternVars cs })
+addExternals fs = State.modify (\cs -> cs { csExternVars = List.union fs (csExternVars cs) })
 
 promoteToFunction :: Id -> Id -> Integer -> Value -> CompilationM ()
 promoteToFunction f x envLength result = do
@@ -180,15 +180,15 @@ freshFunctionName = do
   return ("@" ++ alpha)
 
 compileAt :: AtomicExprCl -> (Id -> Value) -> CompilationM Value
-compileAt (ACLitInt n) s = return (VInt n)
-compileAt (ACLitBool True) s = return (VInt 1)
-compileAt (ACLitBool False) s = return (VInt 0)
-compileAt (ACExternVar x) s = do
+compileAt (ACLitInt  _ n) s = return (VInt n)
+compileAt (ACLitBool _ True) s = return (VInt 1)
+compileAt (ACLitBool _ False) s = return (VInt 0)
+compileAt (ACExternVar _ x) s = do
   addExternals [x]
   return (VId ("@" ++ x))
-compileAt (ACVar x) s = return (s x)
-compileAt (ACVarSelf) s = return (VId "%closure")
-compileAt (ACVarEnv n) s = do
+compileAt (ACVar _ x) s = return (s x)
+compileAt (ACVarSelf _) s = return (VId "%closure")
+compileAt (ACVarEnv _ n) s = do
   alpha <- freshVarName
   envSize <- State.gets csEnvSize
   let stmt = Extractvalue alpha (VId "%env") (llvmArrayType envSize) n
@@ -210,13 +210,13 @@ addCast x = do
   return (VId alpha)
 
 compileCo :: ComplexExprCl -> (Id -> Value) -> CompilationM Value
-compileCo (CCOpAdd e1 e2) s = compileOp Add   e1 e2 s
-compileCo (CCOpSub e1 e2) s = compileOp Sub   e1 e2 s
-compileCo (CCOpMul e1 e2) s = compileOp Mul   e1 e2 s
-compileCo (CCOpDiv e1 e2) s = compileOp Div   e1 e2 s
-compileCo (CCOpLT  e1 e2) s = compileOp CmpLT e1 e2 s >>= addCast
-compileCo (CCOpEQ  e1 e2) s = compileOp CmpEQ e1 e2 s >>= addCast
-compileCo (CCIf  b e1 e2) s = do
+compileCo (CCOpAdd _ e1 e2) s = compileOp Add   e1 e2 s
+compileCo (CCOpSub _ e1 e2) s = compileOp Sub   e1 e2 s
+compileCo (CCOpMul _ e1 e2) s = compileOp Mul   e1 e2 s
+compileCo (CCOpDiv _ e1 e2) s = compileOp Div   e1 e2 s
+compileCo (CCOpLT  _ e1 e2) s = compileOp CmpLT e1 e2 s >>= addCast
+compileCo (CCOpEQ  _ e1 e2) s = compileOp CmpEQ e1 e2 s >>= addCast
+compileCo (CCIf    _ b e1 e2) s = do
   b' <- compileAt b s
   alpha <- freshVarName
   let stmt0 = CmpEQ alpha (VInt 1) b'
@@ -241,7 +241,7 @@ compileCo (CCIf  b e1 e2) s = do
   let stmt7 = Phi beta [(e1Label, e1'), (e2Label, e2')]
   addInstrs [stmt5, stmt6, stmt7]
   return (VId beta)
-compileCo (CCClosure x e env) s = do
+compileCo (CCClosure _ x e env) s = do
   let envSize = toInteger (length env)
   alpha <- freshFunctionName
   (e', cs) <- MonadTrans.lift (State.runStateT (do
@@ -270,20 +270,20 @@ compileCo (CCClosure x e env) s = do
   let stmt4 = Ptrtoint epsilon (VId delta) closurePtrTy "i64"
   addInstrs (stmt0 : stmts ++ [stmt1, stmt2, stmt3, stmt4])
   return (VId epsilon)
-compileCo (CCApp (ACExternVar f) e) s = do
+compileCo (CCApp _ (ACExternVar _ f) e) s = do
   alpha <- freshVarName
   e' <- compileAt e s
   let stmt = Call alpha (VId ("@" ++ f)) [e']
   addExternals [f]
   addInstrs [stmt]
   return (VId alpha)
-compileCo (CCApp ACVarSelf e2) s = do
+compileCo (CCApp _ (ACVarSelf _) e2) s = do
   alpha <- freshVarName
   e2' <- compileAt e2 s
   let stmt = Call alpha (VId "%self") [VId "%closure", e2']
   addInstrs [stmt]
   return (VId alpha)
-compileCo (CCApp e1 e2) s = do
+compileCo (CCApp _ e1 e2) s = do
   alpha <- freshVarName
   beta <- freshVarName
   gamma <- freshVarName
@@ -300,8 +300,8 @@ compileCo (CCApp e1 e2) s = do
   return (VId delta)
 
 compileExpr :: ExprNFCl -> (Id -> Value) -> CompilationM Value
-compileExpr (ECVal x) s = compileAt x s
-compileExpr (ECLet x e1 e2) s = do
+compileExpr (ECVal _ x) s = compileAt x s
+compileExpr (ECLet _ x e1 e2) s = do
   e1' <- compileCo e1 s
   e2' <- compileExpr e2 (\y -> if y == x then e1' else s y)
   return e2'

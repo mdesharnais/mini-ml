@@ -9,12 +9,15 @@ import qualified Type
 
 compileFile :: String -> String
 compileFile code =
-  let tokens = Lexer.alexScanTokens code
-      prog = Parser.parse tokens
-      nf = Compiler.toNormalForm prog
-      nfCl = Compiler.toClosure nf
-      llvmIr = Compiler.Llvm.compile nfCl
-   in llvmIr
+  let tokens = Lexer.alexScanTokens code in
+  let exp = Parser.parse tokens in
+  case Type.infer Type.emptyContext exp of
+    Nothing -> "Does not type check"
+    Just (_, expr) ->
+      let nf = Compiler.toNormalForm expr in
+      let nfCl = Compiler.toClosure nf in
+      let llvmIr = Compiler.Llvm.compile nfCl in
+      llvmIr
 
 main :: IO ()
 main = interact compileFile

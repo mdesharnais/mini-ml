@@ -3,228 +3,258 @@
 module Compiler where
 
 import qualified Data.List
+import qualified Expr
 
 import Data.List((\\))
 import Expr(Expr(..), Id)
 import FreshName
+import Type(TyExpr, Type(..), TypeSchema(..))
 
 -- Intermediate language in normal form
 
 data AtomicExpr =
-  ALitInt Integer |
-  ALitBool Bool |
-  AVar Id |
-  AExternVar Id
+  ALitInt    Type Integer |
+  ALitBool   Type Bool |
+  AVar       Type Id |
+  AExternVar Type Id
 
 data ComplexExpr =
-  COpAdd AtomicExpr AtomicExpr |
-  COpSub AtomicExpr AtomicExpr |
-  COpMul AtomicExpr AtomicExpr |
-  COpDiv AtomicExpr AtomicExpr |
-  COpLT AtomicExpr AtomicExpr |
-  COpEQ AtomicExpr AtomicExpr |
-  CIf AtomicExpr ExprNF ExprNF |
-  CApp AtomicExpr AtomicExpr |
-  CAbs Id ExprNF
+  COpAdd Type AtomicExpr AtomicExpr |
+  COpSub Type AtomicExpr AtomicExpr |
+  COpMul Type AtomicExpr AtomicExpr |
+  COpDiv Type AtomicExpr AtomicExpr |
+  COpLT  Type AtomicExpr AtomicExpr |
+  COpEQ  Type AtomicExpr AtomicExpr |
+  CIf    Type AtomicExpr ExprNF ExprNF |
+  CApp   Type AtomicExpr AtomicExpr |
+  CAbs   Type Id ExprNF
 
 data ExprNF =
-  EVal AtomicExpr |
-  ELet Id ComplexExpr ExprNF |
-  ELetRec Id (Id, ExprNF) ExprNF
+  EVal    Type AtomicExpr |
+  ELet    Type Id ComplexExpr ExprNF |
+  ELetRec Type (Id, TypeSchema) (Id, ExprNF) ExprNF
+
+class Typeable a where
+  getType :: a -> Type
+
+instance Typeable AtomicExpr where
+  getType (ALitInt    ty _) = ty
+  getType (ALitBool   ty _) = ty
+  getType (AVar       ty _) = ty
+  getType (AExternVar ty _) = ty
+
+instance Typeable ExprNF where
+  getType (EVal    ty _) = ty
+  getType (ELet    ty _ _ _) = ty
+  getType (ELetRec ty _ _ _) = ty
 
 -- Pretty print
 
 instance Show AtomicExpr where
-  show (ALitInt n) = show n
-  show (ALitBool n) = show n
-  show (AVar x) = x
-  show (AExternVar x) = x
+  show (ALitInt    _ n) = show n
+  show (ALitBool   _ True) = "true"
+  show (ALitBool   _ False) = "false"
+  show (AVar       _ x) = x
+  show (AExternVar _ f) = f
 
 instance Show ComplexExpr where
-  show (COpAdd e1 e2) = show e1 ++ " + " ++ show e2
-  show (COpSub e1 e2) = show e1 ++ " - " ++ show e2
-  show (COpMul e1 e2) = show e1 ++ " * " ++ show e2
-  show (COpDiv e1 e2) = show e1 ++ " / " ++ show e2
-  show (COpLT e1 e2) = show e1 ++ " < " ++ show e2
-  show (COpEQ e1 e2) = show e1 ++ " = " ++ show e2
-  show (CIf e1 e2 e3) =
+  show (COpAdd _ e1 e2) = show e1 ++ " + " ++ show e2
+  show (COpSub _ e1 e2) = show e1 ++ " - " ++ show e2
+  show (COpMul _ e1 e2) = show e1 ++ " * " ++ show e2
+  show (COpDiv _ e1 e2) = show e1 ++ " / " ++ show e2
+  show (COpLT  _ e1 e2) = show e1 ++ " < " ++ show e2
+  show (COpEQ  _ e1 e2) = show e1 ++ " = " ++ show e2
+  show (CIf    _ e1 e2 e3) =
     "if " ++ show e1 ++ " then " ++ show e2 ++ " else " ++ show e3
-  show (CApp e1 e2) = show e1 ++ " " ++ show e2
-  show (CAbs x e) = "(fun " ++ x ++ " -> " ++ show e ++ ")"
+  show (CApp   _ e1 e2) = show e1 ++ " " ++ show e2
+  show (CAbs   _ x e) = "(fun " ++ x ++ " -> " ++ show e ++ ")"
 
 instance Show ExprNF where
-  show (EVal x) = show x
-  show (ELet x e1 e2) =
+  show (EVal    _ x) = show x
+  show (ELet    _ x e1 e2) =
     "let " ++ x ++ " = " ++ show e1 ++ " in\n" ++ show e2
-  show (ELetRec x (y, e1) e2) =
+  show (ELetRec _ (x, _) (y, e1) e2) =
     "let rec " ++ x ++ " = (fun " ++ y ++ " -> " ++ show e1 ++ ") in\n" ++ show e2
 
 -- Expression -> normal form
 
-nfBinOp :: Expr tySch ty -> Expr tySch ty -> (AtomicExpr -> AtomicExpr -> ComplexExpr) ->
-  (Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNF) -> NameGen ExprNF
-nfBinOp e1 e2 op s k = nf e1 s (\a -> nf e2 s (\b -> do
-  c <- fresh
-  d <- k (AVar c)
-  return (ELet c (op a b) d)))
-
-nf :: Expr tySch ty ->
-  (Id -> AtomicExpr) ->
-  (AtomicExpr -> NameGen ExprNF) ->
+nfBinOp :: TyExpr -> TyExpr -> (Type -> AtomicExpr -> AtomicExpr -> ComplexExpr) ->
+  Type -> (Type -> Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNF) ->
   NameGen ExprNF
-nf (LitInt    _ n) s k = k (ALitInt n)
-nf (LitBool   _ b) s k = k (ALitBool b)
-nf (Var       _ x) s k = k (s x)
-nf (ExternVar _ x) s k = k (AExternVar x)
-nf (OpAdd     _ e1 e2) s k = nfBinOp e1 e2 COpAdd s k
-nf (OpSub     _ e1 e2) s k = nfBinOp e1 e2 COpSub s k
-nf (OpMul     _ e1 e2) s k = nfBinOp e1 e2 COpMul s k
-nf (OpDiv     _ e1 e2) s k = nfBinOp e1 e2 COpDiv s k
-nf (OpLT      _ e1 e2) s k = nfBinOp e1 e2 COpLT s k
-nf (OpEQ      _ e1 e2) s k = nfBinOp e1 e2 COpEQ s k
-nf (If        _ e1 e2 e3) s k = nf e1 s (\e1' -> do
-  a <- fresh
-  e2' <- nf e2 s (return . EVal)
-  e3' <- nf e3 s (return . EVal)
-  b <- k (AVar a)
-  return (ELet a (CIf e1' e2' e3') b))
-nf (Let _ (x, _) e1 e2) s k =
-  nf e1 s (\a -> nf e2 (\y -> if y == x then a else s y) (return . EVal))
-nf (LetRec _ (f, _) (x, e1) e2) s k = do
-  a <- fresh
-  let subst y = if y == f then AVar a else s y
-  e1' <- nf e1 subst (return . EVal)
-  e2' <- nf e2 subst (return . EVal)
-  return (ELetRec a (x, e1') e2')
-nf (Abs _ x e) s k = do
-  a <- fresh
-  b <- nf e s (return . EVal)
-  c <- k (AVar a)
-  return (ELet a (CAbs x b) c)
-nf (App _ e1 e2) s k = nf e1 s (\e1' -> nf e2 s (\e2' -> do
-  a <- fresh
-  d <- k (AVar a)
-  return (ELet a (CApp e1' e2') d)))
+nfBinOp e1 e2 op ty s k = nf e1 s (\a -> nf e2 s (\b -> do
+  c <- fresh
+  d <- k (AVar ty c)
+  return (ELet (getType d) c (op ty a b) d)))
 
-toNormalFormM :: Expr tySch ty -> NameGen ExprNF
-toNormalFormM e = nf e AVar (return . EVal)
+nf :: TyExpr -> (Type -> Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNF) ->
+  NameGen ExprNF
+nf (LitInt    ty n) s k = k (ALitInt ty n)
+nf (LitBool   ty b) s k = k (ALitBool ty b)
+nf (Var       ty x) s k = k (s ty x)
+nf (ExternVar ty x) s k = k (AExternVar ty x)
+nf (OpAdd     ty e1 e2) s k = nfBinOp e1 e2 COpAdd ty s k
+nf (OpSub     ty e1 e2) s k = nfBinOp e1 e2 COpSub ty s k
+nf (OpMul     ty e1 e2) s k = nfBinOp e1 e2 COpMul ty s k
+nf (OpDiv     ty e1 e2) s k = nfBinOp e1 e2 COpDiv ty s k
+nf (OpLT      ty e1 e2) s k = nfBinOp e1 e2 COpLT  ty s k
+nf (OpEQ      ty e1 e2) s k = nfBinOp e1 e2 COpEQ  ty s k
+nf (If        ty e1 e2 e3) s k = nf e1 s (\e1' -> do
+  a <- fresh
+  e2' <- nf e2 s (return . EVal (Expr.getType e2))
+  e3' <- nf e3 s (return . EVal (Expr.getType e3))
+  b <- k (AVar (Expr.getType e1) a)
+  let ifTy = getType e2'
+  return (ELet (getType b) a (CIf ifTy e1' e2' e3') b))
+nf (Let ty (x, _) e1 e2) s k =
+  nf e1 s (\a ->
+  nf e2 (\ty y -> if y == x then a else s ty y) (return . EVal (Expr.getType e2)))
+nf (LetRec ty (f, fTy) (x, e1) e2) s k = do
+  let rmTySch (TSType ty) = ty
+      rmTySch (TSForall _ ty) = rmTySch ty
+  a <- fresh
+  let subst ty y = if y == f then AVar ty a else s ty y
+  e1' <- nf e1 subst (return . EVal (Expr.getType e1))
+  e2' <- nf e2 subst (return . EVal (Expr.getType e2))
+  return (ELetRec ty (a, fTy) (x, e1') e2')
+nf (Abs ty x e) s k = do
+  a <- fresh
+  b <- nf e s (return . EVal (Expr.getType e))
+  c <- k (AVar ty a)
+  return (ELet (getType c) a (CAbs ty x b) c)
+nf (App ty e1 e2) s k = nf e1 s (\e1' -> nf e2 s (\e2' -> do
+  a <- fresh
+  d <- k (AVar ty a)
+  return (ELet (getType d) a (CApp ty e1' e2') d)))
 
-toNormalForm :: Expr tySch ty -> ExprNF
+toNormalFormM :: TyExpr -> NameGen ExprNF
+toNormalFormM e = nf e AVar (return . EVal (Expr.getType e))
+
+toNormalForm :: TyExpr -> ExprNF
 toNormalForm = runNameGen . toNormalFormM
 
 -- Intermediate language in normal form with closures
 
 data AtomicExprCl =
-  ACLitInt Integer |
-  ACLitBool Bool |
-  ACExternVar Id |
-  ACVar Id |
-  ACVarSelf |
-  ACVarEnv Integer
+  ACLitInt    Type Integer |
+  ACLitBool   Type Bool |
+  ACExternVar Type Id |
+  ACVar       Type Id |
+  ACVarSelf   Type |
+  ACVarEnv    Type Integer
 
 type Env = [AtomicExprCl]
 
 data ComplexExprCl =
-  CCOpAdd AtomicExprCl AtomicExprCl |
-  CCOpSub AtomicExprCl AtomicExprCl |
-  CCOpMul AtomicExprCl AtomicExprCl |
-  CCOpDiv AtomicExprCl AtomicExprCl |
-  CCOpLT AtomicExprCl AtomicExprCl |
-  CCOpEQ AtomicExprCl AtomicExprCl |
-  CCIf AtomicExprCl ExprNFCl ExprNFCl |
-  CCApp AtomicExprCl AtomicExprCl |
-  CCClosure Id ExprNFCl Env
+  CCOpAdd   Type AtomicExprCl AtomicExprCl |
+  CCOpSub   Type AtomicExprCl AtomicExprCl |
+  CCOpMul   Type AtomicExprCl AtomicExprCl |
+  CCOpDiv   Type AtomicExprCl AtomicExprCl |
+  CCOpLT    Type AtomicExprCl AtomicExprCl |
+  CCOpEQ    Type AtomicExprCl AtomicExprCl |
+  CCIf      Type AtomicExprCl ExprNFCl ExprNFCl |
+  CCApp     Type AtomicExprCl AtomicExprCl |
+  CCClosure Type Id ExprNFCl Env
 
 data ExprNFCl =
-  ECVal AtomicExprCl |
-  ECLet Id ComplexExprCl ExprNFCl
+  ECVal Type AtomicExprCl |
+  ECLet Type Id ComplexExprCl ExprNFCl
 
 -- Pretty print
 
 instance Show AtomicExprCl where
-  show (ACLitInt n) = show n
-  show (ACLitBool n) = show n
-  show (ACExternVar x) = show x
-  show (ACVar x) = x
-  show (ACVarSelf) = "env.self"
-  show (ACVarEnv n) = "env." ++ show n
+  show (ACLitInt    _ n) = show n
+  show (ACLitBool   _ b) = show b
+  show (ACExternVar _ f) = show f
+  show (ACVar       _ x) = x
+  show (ACVarSelf   _)   = "env.self"
+  show (ACVarEnv    _ n) = "env." ++ show n
 
 instance Show ComplexExprCl where
-  show (CCOpAdd e1 e2) = show e1 ++ " + " ++ show e2
-  show (CCOpSub e1 e2) = show e1 ++ " - " ++ show e2
-  show (CCOpMul e1 e2) = show e1 ++ " * " ++ show e2
-  show (CCOpDiv e1 e2) = show e1 ++ " / " ++ show e2
-  show (CCOpLT e1 e2) = show e1 ++ " < " ++ show e2
-  show (CCOpEQ e1 e2) = show e1 ++ " = " ++ show e2
-  show (CCIf e1 e2 e3) =
+  show (CCOpAdd   _ e1 e2) = show e1 ++ " + " ++ show e2
+  show (CCOpSub   _ e1 e2) = show e1 ++ " - " ++ show e2
+  show (CCOpMul   _ e1 e2) = show e1 ++ " * " ++ show e2
+  show (CCOpDiv   _ e1 e2) = show e1 ++ " / " ++ show e2
+  show (CCOpLT    _ e1 e2) = show e1 ++ " < " ++ show e2
+  show (CCOpEQ    _ e1 e2) = show e1 ++ " = " ++ show e2
+  show (CCIf      _ e1 e2 e3) =
     "if " ++ show e1 ++ " then " ++ show e2 ++ " else " ++ show e3
-  show (CCApp e1 e2) = show e1 ++ " " ++ show e2
-  show (CCClosure x f env) =
+  show (CCApp     _ e1 e2) = show e1 ++ " " ++ show e2
+  show (CCClosure _ x f env) =
     "Closure (fun env -> fun " ++ x ++ " -> " ++ show f ++ ", " ++ show env ++ ")"
 
 instance Show ExprNFCl where
-  show (ECVal x) = show x
-  show (ECLet x e1 e2) =
+  show (ECVal _ x) = show x
+  show (ECLet _ x e1 e2) =
     "let " ++ x ++ " = " ++ show e1 ++ " in\n" ++ show e2
 
 -- Normal form -> normal form with closure
 
 class FreeVariables a where
-  fv :: a -> [Id]
+  fv :: a -> [(Id, Type)]
 
 instance FreeVariables AtomicExpr where
-  fv (ALitInt _) = []
-  fv (ALitBool _) = []
-  fv (AVar x) = [x]
-  fv (AExternVar x) = []
+  fv (ALitInt    _ _) = []
+  fv (ALitBool   _ _) = []
+  fv (AVar       ty x) = [(x, ty)]
+  fv (AExternVar _ x) = []
 
 instance FreeVariables ComplexExpr where
-  fv (COpAdd e1 e2) = Data.List.union (fv e1) (fv e2)
-  fv (COpSub e1 e2) = Data.List.union (fv e1) (fv e2)
-  fv (COpMul e1 e2) = Data.List.union (fv e1) (fv e2)
-  fv (COpDiv e1 e2) = Data.List.union (fv e1) (fv e2)
-  fv (COpLT  e1 e2) = Data.List.union (fv e1) (fv e2)
-  fv (COpEQ  e1 e2) = Data.List.union (fv e1) (fv e2)
-  fv (CIf  b e1 e2) = let u = Data.List.union in (fv b) `u` (fv e1) `u` (fv e2)
-  fv (CApp   e1 e2) = Data.List.union (fv e1) (fv e2)
-  fv (CAbs x e) = fv e \\ [x]
+  fv (COpAdd _ e1 e2) = Data.List.union (fv e1) (fv e2)
+  fv (COpSub _ e1 e2) = Data.List.union (fv e1) (fv e2)
+  fv (COpMul _ e1 e2) = Data.List.union (fv e1) (fv e2)
+  fv (COpDiv _ e1 e2) = Data.List.union (fv e1) (fv e2)
+  fv (COpLT  _ e1 e2) = Data.List.union (fv e1) (fv e2)
+  fv (COpEQ  _ e1 e2) = Data.List.union (fv e1) (fv e2)
+  fv (CIf    _ e1 e2 e3) =
+    let u = Data.List.union in (fv e1) `u` (fv e2) `u` (fv e3)
+  fv (CApp   _ e1 e2) = Data.List.union (fv e1) (fv e2)
+  fv (CAbs   _ x e) = [p | p@(y,_) <- fv e, y /= x]
 
 instance FreeVariables ExprNF where
-  fv (EVal x) = fv x
-  fv (ELet x e1 e2) = Data.List.union (fv e1) (fv e2 \\ [x])
-  fv (ELetRec f (x, e1) e2) = Data.List.union (fv e1 \\ [f, x]) (fv e2 \\ [f])
+  fv (EVal    _ x) = fv x
+  fv (ELet    _ x e1 e2) = Data.List.union (fv e1) [p | p <- fv e2, fst p /= x]
+  fv (ELetRec _ (f, _) (x, e1) e2) =
+    Data.List.union
+      [p | p@(y,_) <- fv e1, y /= f && y /= f]
+      [p | p@(y,_) <- fv e2, y /= f]
 
-clAt :: (Id -> AtomicExprCl) -> AtomicExpr -> AtomicExprCl
-clAt s (ALitInt n) = ACLitInt n
-clAt s (ALitBool b) = ACLitBool b
-clAt s (AVar x) = s x
-clAt s (AExternVar x) = (ACExternVar x)
+clAt :: (Type -> Id -> AtomicExprCl) -> AtomicExpr -> AtomicExprCl
+clAt s (ALitInt    ty n) = ACLitInt    ty n
+clAt s (ALitBool   ty b) = ACLitBool   ty b
+clAt s (AVar       ty  x) = s ty x
+clAt s (AExternVar ty x) = ACExternVar ty x
 
-clAbs s f (x, e) =
-  let fvs = fv e \\ [f, x] in
-  let subst y =
+clAbs ty s f (x, e) =
+  let fvs = [p | p@(y,_) <- fv e, y /= f && y /= x] in
+  let subst ty y =
         if x == y then
-          ACVar x
+          ACVar ty x
         else
-          maybe (s y) (ACVarEnv . toInteger) (Data.List.elemIndex y fvs)
-   in CCClosure x (clExpr subst e) (map ACVar fvs)
+          case Data.List.elemIndex y (map fst fvs) of
+            Nothing -> s ty y
+            Just n  -> ACVarEnv (snd (fvs !! n)) (toInteger n)
+   in CCClosure ty x (clExpr subst e) (map (uncurry (flip ACVar)) fvs)
 
-clCo :: (Id -> AtomicExprCl) -> ComplexExpr -> ComplexExprCl
-clCo s (COpAdd e1 e2) = CCOpAdd (clAt s e1) (clAt s e2)
-clCo s (COpSub e1 e2) = CCOpSub (clAt s e1) (clAt s e2)
-clCo s (COpMul e1 e2) = CCOpMul (clAt s e1) (clAt s e2)
-clCo s (COpDiv e1 e2) = CCOpDiv (clAt s e1) (clAt s e2)
-clCo s (COpLT  e1 e2) = CCOpLT  (clAt s e1) (clAt s e2)
-clCo s (COpEQ  e1 e2) = CCOpEQ  (clAt s e1) (clAt s e2)
-clCo s (CIf  b e1 e2) = CCIf (clAt s b) (clExpr s e1) (clExpr s e2)
-clCo s (CApp   e1 e2) = CCApp   (clAt s e1) (clAt s e2)
-clCo s (CAbs x e) = clAbs s "" (x, e)
+clCo :: (Type -> Id -> AtomicExprCl) -> ComplexExpr -> ComplexExprCl
+clCo s (COpAdd ty e1 e2)    = CCOpAdd ty (clAt s e1) (clAt s e2)
+clCo s (COpSub ty e1 e2)    = CCOpSub ty (clAt s e1) (clAt s e2)
+clCo s (COpMul ty e1 e2)    = CCOpMul ty (clAt s e1) (clAt s e2)
+clCo s (COpDiv ty e1 e2)    = CCOpDiv ty (clAt s e1) (clAt s e2)
+clCo s (COpLT  ty e1 e2)    = CCOpLT  ty (clAt s e1) (clAt s e2)
+clCo s (COpEQ  ty e1 e2)    = CCOpEQ  ty (clAt s e1) (clAt s e2)
+clCo s (CIf    ty e1 e2 e3) = CCIf    ty (clAt s e1) (clExpr s e2) (clExpr s e3)
+clCo s (CApp   ty e1 e2)    = CCApp   ty (clAt s e1) (clAt s e2)
+clCo s (CAbs   ty x e)      = clAbs ty s "" (x, e)
 
-clExpr :: (Id -> AtomicExprCl) -> ExprNF -> ExprNFCl
-clExpr s (EVal a) = ECVal (clAt s a)
-clExpr s (ELet x e1 e2) = ECLet x (clCo s e1) (clExpr s e2)
-clExpr s (ELetRec f (x, e1) e2) = ECLet f
-    (clAbs (\g -> if g == f then ACVarSelf else s g) f (x, e1))
+clExpr :: (Type -> Id -> AtomicExprCl) -> ExprNF -> ExprNFCl
+clExpr s (EVal    ty a) = ECVal ty (clAt s a)
+clExpr s (ELet    ty x e1 e2) = ECLet ty x (clCo s e1) (clExpr s e2)
+clExpr s (ELetRec ty (f, fTy) (x, e1) e2) =
+  let rmTySch (TSType ty) = ty
+      rmTySch (TSForall _ tySch) = rmTySch tySch in
+  ECLet ty f
+    (clAbs (rmTySch fTy)
+      (\ty g -> if g == f then ACVarSelf ty else s ty g) f (x, e1))
     (clExpr s e2)
 
 toClosure :: ExprNF -> ExprNFCl

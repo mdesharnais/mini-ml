@@ -312,8 +312,6 @@ interpretationTests = [
   ]
 
 normalFormTests = [
-    ("a", "a"),
-
     ("1", "1"),
 
     ("fun x -> x",
@@ -331,17 +329,23 @@ normalFormTests = [
 
     ("(fun x -> x) true",
      "let x0 = (fun x -> x) in\n" ++
-     "let x1 = x0 True in\n" ++
+     "let x1 = x0 true in\n" ++
      "x1"),
 
-    ("f x y z",
-     "let x0 = f x in\nlet x1 = x0 y in\nlet x2 = x1 z in\nx2"),
+    ("let f = fun x -> fun y -> fun z -> x in f 1 2 3",
+     "let x0 = (fun x -> " ++
+       "let x1 = (fun y -> " ++
+         "let x2 = (fun z -> x) in\nx2) in\nx1) in\n" ++
+     "let x3 = x0 1 in\n" ++
+     "let x4 = x3 2 in\n" ++
+     "let x5 = x4 3 in\n" ++
+     "x5"),
 
     ("(fun x -> x) (fun x -> x) true",
      "let x0 = (fun x -> x) in\n" ++
      "let x1 = (fun x -> x) in\n" ++
      "let x2 = x0 x1 in\n" ++
-     "let x3 = x2 True in\n" ++
+     "let x3 = x2 true in\n" ++
      "x3"),
 
     ("let a = 1 in let b = 2 in a * b",
@@ -362,17 +366,23 @@ normalFormTests = [
     ("let a = 1 in let b = 2 in 3 + a * b",
      "let x0 = 1 * 2 in\nlet x1 = 3 + x0 in\nx1"),
 
-    ("if a then b else c",
-     "let x0 = if a then b else c in\nx0"),
+    ("if true then 1 else 2",
+     "let x0 = if true then 1 else 2 in\nx0"),
 
-    ("if a then f 1 else f 2",
-     "let x0 = if a then let x1 = f 1 in\nx1 else let x2 = f 2 in\nx2 in\nx0"),
+    ("let f = fun x -> x in if true then f 1 else f 2",
+     "let x0 = (fun x -> x) in\n" ++
+     "let x1 = " ++
+      "if true then " ++
+        "let x2 = x0 1 in\nx2 " ++
+      "else " ++
+        "let x3 = x0 2 in\nx3 in\n" ++
+     "x1"),
 
     ("let f = fun x -> if x then 1 else 2 in f true",
      "let x0 = (fun x -> " ++
         "let x1 = if x then 1 else 2 in\n" ++
         "x1) in\n" ++
-     "let x2 = x0 True in\n" ++
+     "let x2 = x0 true in\n" ++
      "x2"),
 
     ("let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3",
@@ -396,12 +406,12 @@ normalFormTests = [
   ]
 
 fvTests = [
-    ("fun x -> x", []),
-    ("fun x -> y", ["y"]),
-    ("fun x -> x + y", ["y"]),
-    ("let x = 2 + 3 in x", []),
-    ("let x = 5 in let f = fun y -> x + y in f 3", []),
-    ("fun n -> if n = 0 then 0 else n + sum (n - 1)", ["sum"])
+    (Type.emptyContext, "fun x -> x", []),
+    (Type.singletonContext ("y", TInt), "fun x -> y", ["y"]),
+    (Type.singletonContext ("y", TInt), "fun x -> x + y", ["y"]),
+    (Type.emptyContext, "let x = 2 + 3 in x", []),
+    (Type.emptyContext, "let x = 5 in let f = fun y -> x + y in f 3", []),
+    (Type.singletonContext ("sum", TFun TInt TInt), "fun n -> if n = 0 then 0 else n + sum (n - 1)", ["sum"])
   ]
 
 closureTests = [
@@ -470,25 +480,31 @@ testInterpreter (prog, val) =
 
 testNormalForm :: (String, String) -> Test
 testNormalForm (prog, nf) =
-  let term = Parser.parse (Lexer.alexScanTokens prog)
-      normForm = Compiler.toNormalForm term
-   in TestLabel prog $
-        TestCase $ assertEqual "" nf (show normForm)
+  let term = Parser.parse (Lexer.alexScanTokens prog) in
+  TestLabel prog $ TestCase $
+    case Type.infer Type.emptyContext term of
+      Nothing -> assertFailure "did not type checked"
+      Just (_, expr) -> assertEqual "" nf (show (Compiler.toNormalForm expr))
 
-testFreeVariables :: (String, [String]) -> Test
-testFreeVariables (prog, fvs) =
-  let term = Parser.parse (Lexer.alexScanTokens prog)
-      normForm = Compiler.toNormalForm term
-   in TestLabel (show normForm) $
-        TestCase $ assertEqual "" fvs (Compiler.fv normForm)
+testFreeVariables :: (Type.Context, String, [String]) -> Test
+testFreeVariables (ctxt, prog, fvs) =
+  let term = Parser.parse (Lexer.alexScanTokens prog) in
+  TestLabel prog $ TestCase $
+    case Type.infer ctxt term of
+      Nothing -> assertFailure "did not type checked"
+      Just (_, expr) ->
+        assertEqual "" fvs (map fst (Compiler.fv (Compiler.toNormalForm expr)))
 
 testClosure :: (String, String) -> Test
 testClosure (prog, nfc) =
-  let term = Parser.parse (Lexer.alexScanTokens prog)
-      normForm = Compiler.toNormalForm term
-      normFormClosure = Compiler.toClosure normForm
-   in TestLabel (show normForm) $
-        TestCase $ assertEqual "" nfc (show normFormClosure)
+  let term = Parser.parse (Lexer.alexScanTokens prog) in
+  TestLabel prog $ TestCase $
+    case Type.infer Type.emptyContext term of
+      Nothing -> assertFailure "did not type checked"
+      Just (_, expr) ->
+        let normForm = Compiler.toNormalForm expr in
+        let normFormClosure = Compiler.toClosure normForm in
+        assertEqual "" nfc (show normFormClosure)
 
 tests =
   TestList $ [
