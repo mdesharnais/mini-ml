@@ -164,7 +164,7 @@ data ExprNFCl =
 instance Show AtomicExprCl where
   show (ACLitInt    _ n) = show n
   show (ACLitBool   _ b) = show b
-  show (ACExternVar _ f) = show f
+  show (ACExternVar _ f) = "extern " ++ f
   show (ACVar       _ x) = x
   show (ACVarSelf   _)   = "env.self"
   show (ACVarEnv    _ n) = "env." ++ show n
@@ -186,6 +186,32 @@ instance Show ExprNFCl where
   show (ECVal _ x) = show x
   show (ECLet _ x e1 e2) =
     "let " ++ x ++ " = " ++ show e1 ++ " in\n" ++ show e2
+
+class PrettyPrint a where
+  prettyPrint :: String -> a -> String
+
+instance PrettyPrint ComplexExprCl where
+  prettyPrint prefix (CCOpAdd   _ e1 e2) = show e1 ++ " + " ++ show e2
+  prettyPrint prefix (CCOpSub   _ e1 e2) = show e1 ++ " - " ++ show e2
+  prettyPrint prefix (CCOpMul   _ e1 e2) = show e1 ++ " * " ++ show e2
+  prettyPrint prefix (CCOpDiv   _ e1 e2) = show e1 ++ " / " ++ show e2
+  prettyPrint prefix (CCOpLT    _ e1 e2) = show e1 ++ " < " ++ show e2
+  prettyPrint prefix (CCOpEQ    _ e1 e2) = show e1 ++ " = " ++ show e2
+  prettyPrint prefix (CCIf      _ e1 e2 e3) = "\n" ++
+    prefix ++ "  if " ++ show e1 ++ " then\n" ++
+      prettyPrint ("    " ++ prefix) e2 ++ "\n" ++
+    prefix ++ "  else\n" ++
+      prettyPrint ("    " ++ prefix) e3
+  prettyPrint prefix (CCApp     _ e1 e2) = show e1 ++ " " ++ show e2
+  prettyPrint prefix (CCClosure _ x f env) =
+    "Closure (fun env = " ++ show env ++ " -> fun " ++ x ++ " ->\n" ++
+      prettyPrint ("  " ++ prefix) f ++ ")"
+
+instance PrettyPrint ExprNFCl where
+  prettyPrint prefix (ECVal _ x) = prefix ++ show x
+  prettyPrint prefix (ECLet _ x e1 e2) =
+    prefix ++ "let " ++ x ++ " = " ++ prettyPrint prefix e1 ++ " in\n" ++
+    prettyPrint prefix e2
 
 -- Normal form -> normal form with closure
 
@@ -215,7 +241,7 @@ instance FreeVariables ExprNF where
   fv (ELet    _ x e1 e2) = Data.List.union (fv e1) [p | p <- fv e2, fst p /= x]
   fv (ELetRec _ (f, _) (x, e1) e2) =
     Data.List.union
-      [p | p@(y,_) <- fv e1, y /= f && y /= f]
+      [p | p@(y,_) <- fv e1, y /= f && y /= x]
       [p | p@(y,_) <- fv e2, y /= f]
 
 clAt :: (Type -> Id -> AtomicExprCl) -> AtomicExpr -> AtomicExprCl
@@ -225,15 +251,19 @@ clAt s (AVar       ty  x) = s ty x
 clAt s (AExternVar ty x) = ACExternVar ty x
 
 clAbs ty s f (x, e) =
-  let fvs = [p | p@(y,_) <- fv e, y /= f && y /= x] in
+  let fvs = [p | p@(y,_) <- fv e, y /= x] in
+  let fFvs = [p | p@(y,_) <- fvs, y /= f] in
+  let env = map (uncurry (flip s)) fFvs in
   let subst ty y =
-        if x == y then
+        if y == x then
           ACVar ty x
+        else if y == f then
+          ACVarSelf ty
         else
           case Data.List.elemIndex y (map fst fvs) of
             Nothing -> s ty y
             Just n  -> ACVarEnv (snd (fvs !! n)) (toInteger n)
-   in CCClosure ty x (clExpr subst e) (map (uncurry (flip ACVar)) fvs)
+   in CCClosure ty x (clExpr subst e) env
 
 clCo :: (Type -> Id -> AtomicExprCl) -> ComplexExpr -> ComplexExprCl
 clCo s (COpAdd ty e1 e2)    = CCOpAdd ty (clAt s e1) (clAt s e2)

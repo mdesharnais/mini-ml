@@ -385,6 +385,17 @@ normalFormTests = [
      "let x2 = x0 true in\n" ++
      "x2"),
 
+    ("let rec f = fun x -> fun y -> f y x in f 1 2",
+     "let rec x0 = (fun x -> " ++
+       "let x1 = (fun y -> " ++
+         "let x2 = x0 y in\n" ++
+         "let x3 = x2 x in\n" ++
+         "x3) in\n" ++
+       "x1) in\n" ++
+     "let x4 = x0 1 in\n" ++
+     "let x5 = x4 2 in\n" ++
+     "x5"),
+
     ("let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3",
      "let rec x0 = (fun n -> " ++
        "let x1 = n = 0 in\n" ++
@@ -415,12 +426,38 @@ fvTests = [
   ]
 
 closureTests = [
+    ("let n = 1 * 5 in " ++
+     "let f = fun x -> fun y -> x + y + n in " ++
+     "f 1 2",
+
+     "let x0 = 1 * 5 in\n" ++
+     "let x1 = Closure (fun env -> fun x -> " ++
+       "let x2 = Closure (fun env -> fun y -> " ++
+         "let x3 = env.0 + y in\n" ++
+         "let x4 = x3 + env.1 in\n" ++
+         "x4, [x,env.0]) in\n" ++
+       "x2, [x0]) in\n" ++
+     "let x5 = x1 1 in\n" ++
+     "let x6 = x5 2 in\n" ++
+     "x6"),
+
     ("let x = 5 in let f = fun y -> x + y in f 3",
      "let x0 = Closure (fun env -> fun y -> " ++
         "let x1 = 5 + y in\n" ++
         "x1, []) in\n" ++
      "let x2 = x0 3 in\n" ++
      "x2"),
+
+    ("let rec f = fun x -> fun y -> f y x in f 1 2",
+     "let x0 = Closure (fun env -> fun x -> " ++
+       "let x1 = Closure (fun env -> fun y -> " ++
+         "let x2 = env.0 y in\n" ++
+         "let x3 = x2 env.1 in\n" ++
+         "x3, [env.self,x]) in\n" ++
+       "x1, []) in\n" ++
+     "let x4 = x0 1 in\n" ++
+     "let x5 = x4 2 in\n" ++
+     "x5"),
 
     ("let x = 5 + 3 in let f = fun y -> x + y in f 3",
      "let x0 = 5 + 3 in\n" ++

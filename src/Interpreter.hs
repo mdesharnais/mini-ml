@@ -1,8 +1,25 @@
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
 module Interpreter where
 
 import qualified Data.List
 
 import Expr(Expr(..))
+import Foreign
+import Foreign.C.Types
+
+foreign import ccall "printheader" c_printheader :: CLong -> CLong
+foreign import ccall "printdot"    c_printdot    :: CLong -> CLong
+foreign import ccall "impl1"       c_impl1       :: CLong -> CLong
+foreign import ccall "impl2"       c_impl2       :: CLong -> CLong
+
+externalFunctions :: [(String, CLong -> CLong)]
+externalFunctions = [
+    ("printheader", c_printheader),
+    ("printdot",    c_printdot),
+    ("impl1",       c_impl1),
+    ("impl2",       c_impl2)
+  ]
 
 type Env tySch ty = [(String, Value tySch ty)]
 data Value tySch ty =
@@ -21,6 +38,14 @@ evalBinOpInt env t1 t2 result f = do
 eval :: Env tySch ty -> Expr tySch ty -> Maybe (Value tySch ty)
 eval env (Var _ x) = Data.List.lookup x env
 eval env (Abs _ x t) = Just (Closure x t env)
+eval env (App _ (ExternVar _ f) t2) = do
+  v2 <- eval env t2
+  case v2 of
+    (ConstInt n) -> do
+      !fun <- Data.List.lookup f externalFunctions
+      let !n' =  fun (fromInteger n)
+      return (ConstInt (toInteger n'))
+    _ -> Nothing
 eval env (App _ t1 t2) = do
   v1 <- eval env t1
   v2 <- eval env t2

@@ -91,9 +91,9 @@ instance Show Instr where
   show (Add x e1 e2) = printf "  %s = add i64 %s, %s" x (show e1) (show e2)
   show (Sub x e1 e2) = printf "  %s = sub i64 %s, %s" x (show e1) (show e2)
   show (Mul x e1 e2) = printf "  %s = mul i64 %s, %s" x (show e1) (show e2)
-  show (Div x e1 e2) = printf "  %s = udiv i64 %s, %s" x (show e1) (show e2)
+  show (Div x e1 e2) = printf "  %s = sdiv i64 %s, %s" x (show e1) (show e2)
   show (CmpLT x e1 e2) =
-    printf "  %s = icmp ult i64 %s, %s" x (show e1) (show e2)
+    printf "  %s = icmp slt i64 %s, %s" x (show e1) (show e2)
   show (CmpEQ x e1 e2) =
     printf "  %s = icmp eq i64 %s, %s" x (show e1) (show e2)
   show (Call x f args) =
@@ -268,7 +268,7 @@ compileCo (CCClosure _ x e env) s = do
   let stmt2 = Bitcast delta (VId gamma) "i8*" closurePtrTy
   let stmt3 = Store (closureTy, ccc) (closurePtrTy, VId delta)
   let stmt4 = Ptrtoint epsilon (VId delta) closurePtrTy "i64"
-  addInstrs (stmt0 : stmts ++ [stmt1, stmt2, stmt3, stmt4])
+  addInstrs (stmt0 : reverse stmts ++ [stmt1, stmt2, stmt3, stmt4])
   return (VId epsilon)
 compileCo (CCApp _ (ACExternVar _ f) e) s = do
   alpha <- freshVarName
@@ -312,13 +312,11 @@ compile e =
   let (result, cs) = runCompilation (compileExpr e VId) emptyCompState in
   unlines [
       "; Implementation defined external declarations",
-      "declare i32 @printf(i8*, ...)",
       "declare i8* @malloc(i64)",
       "; User defined external declarations",
       unlines (map showExtern (csExternVars cs)),
       "; User defined functions",
       unlines (map show (csFuns cs)),
-      "@.str = private unnamed_addr constant [4 x i8] c\"%d\\0A\\00\"",
       "define i32 @main() {",
       unlines (map show (csInstrs cs)),
       "  ret i32 0",
