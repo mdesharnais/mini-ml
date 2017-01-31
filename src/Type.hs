@@ -1,7 +1,7 @@
 module Type where
 
 import qualified Control.Monad
-import qualified Data.List
+import qualified Data.List as List
 import qualified Data.Maybe
 import qualified Expr
 
@@ -41,12 +41,12 @@ class FreeVars a where
 instance FreeVars Type where
   freeVars TBool = []
   freeVars TInt = []
-  freeVars (TFun t1 t2) = Data.List.union (freeVars t1) (freeVars t2)
+  freeVars (TFun t1 t2) = List.union (freeVars t1) (freeVars t2)
   freeVars (TVar x) = [x]
 
 instance FreeVars TypeSchema where
   freeVars (TSType ty) = freeVars ty
-  freeVars (TSForall x ty) = Data.List.delete x (freeVars ty)
+  freeVars (TSForall x ty) = List.delete x (freeVars ty)
 
 type Context = [(String, TypeSchema)]
 
@@ -60,19 +60,19 @@ addTySchemaToContext :: (String, TypeSchema) -> Context -> Context
 addTySchemaToContext = (:)
 
 lookupContext :: String -> Context -> Maybe TypeSchema
-lookupContext = Data.List.lookup
+lookupContext = List.lookup
 
 singletonContext :: (String, Type) -> Context
 singletonContext p = addContext p emptyContext
 
 contextFromList :: [(String, Type)] -> Context
-contextFromList = Data.List.foldl (flip addContext) emptyContext
+contextFromList = List.foldl (flip addContext) emptyContext
 
 extractTypeVars :: Context -> [String]
 extractTypeVars =
   let extractFromTySchema (TSType ty) = freeVars ty
       extractFromTySchema (TSForall _ tySchema) = extractFromTySchema tySchema
-   in Data.List.concat . map (extractFromTySchema . snd)
+   in List.concat . map (extractFromTySchema . snd)
 
 type Subst = [(String, Type)]
 
@@ -87,14 +87,14 @@ singletonSubst p = addSubst p emptySubst
 
 applyOnType :: Subst -> Type -> Type
 applyOnType s (TFun t1 t2) = TFun (applyOnType s t1) (applyOnType s t2)
-applyOnType s (TVar x) = Data.Maybe.fromMaybe (TVar x) (Data.List.lookup x s)
+applyOnType s (TVar x) = Data.Maybe.fromMaybe (TVar x) (List.lookup x s)
 applyOnType s t = t
 
 applyOnTypeSchema :: Subst -> TypeSchema -> TypeSchema
 applyOnTypeSchema s (TSType ty) = TSType (applyOnType s ty)
 applyOnTypeSchema s (TSForall x ts) =
   let ts' = applyOnTypeSchema s ts in
-  case Data.List.lookup x s of
+  case List.lookup x s of
     Nothing -> TSForall x ts'
     Just _ -> ts'
 
@@ -107,19 +107,13 @@ concatSubst as bs = map (\(x, ty) -> (x, applyOnType bs ty)) as ++ bs
 genFreshTVar :: Monad m => NameGenT m Type
 genFreshTVar = fresh >>= (return . TVar)
 
-typeContains :: String -> Type -> Bool
-typeContains x TBool = False
-typeContains x TInt = False
-typeContains x (TFun t1 t2) = (typeContains x t1) || (typeContains x t2)
-typeContains x (TVar y) = x == y
-
 unify :: Type -> Type -> Maybe Subst
 unify (TVar x) (TVar y) = Just $
   if x == y then emptySubst else singletonSubst (x, TVar y)
 unify (TVar x) t =
-  if typeContains x t then Nothing else Just (singletonSubst (x, t))
+  if List.elem x (freeVars t) then Nothing else Just (singletonSubst (x, t))
 unify t (TVar x) =
-  if typeContains x t then Nothing else Just (singletonSubst (x, t))
+  if List.elem x (freeVars t) then Nothing else Just (singletonSubst (x, t))
 unify (TFun t1 t2) (TFun t1' t2') = do
   s1 <- unify t1 t1'
   s2 <- unify (applyOnType s1 t2) (applyOnType s1 t2')
@@ -201,7 +195,7 @@ infer c e = do
           let tau1 = Expr.getType e1'
           let fv = freeVars tau1
           let tyVars = fv \\ (extractTypeVars theta1')
-          let tau1' = Data.List.foldl (flip TSForall) (TSType tau1) tyVars
+          let tau1' = List.foldl (flip TSForall) (TSType tau1) tyVars
           (theta2, e2') <- impl (addTySchemaToContext (x, tau1') theta1') e2
           return (theta1 `cat` theta2, Let (Expr.getType e2') (x, tau1') e1' e2')
         impl c (LetRec _ (f, _) (y, e1) e2) = do
@@ -212,6 +206,6 @@ infer c e = do
           let theta1' = theta1 `app` c
           let fv = freeVars tau1
           let tyVars = fv \\ (extractTypeVars (s `app` theta1'))
-          let tau1' = Data.List.foldl (flip TSForall) (TSType tau1) tyVars
+          let tau1' = List.foldl (flip TSForall) (TSType tau1) tyVars
           (theta2, e2') <- impl (s `app` (addTySchemaToContext (f, tau1') theta1')) e2
           return (theta1 `cat` s `cat` theta2, LetRec (Expr.getType e2') (f, tau1') (y, e1') e2')

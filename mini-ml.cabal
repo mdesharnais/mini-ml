@@ -29,6 +29,7 @@ library
                      , array
                      , mtl
   default-language:    Haskell2010
+  C-sources:           src/libutil.c
 
 executable mini-ml-exe
   hs-source-dirs:      app
