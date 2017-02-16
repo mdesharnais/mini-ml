@@ -173,12 +173,12 @@ infer c e = do
             App (applyOnType s3 beta) e1' e2')
         impl c (LitInt  _ n) = return (emptySubst, LitInt TInt n)
         impl c (LitBool _ b) = return (emptySubst, LitBool TBool b)
-        impl c (OpMul _ e1 e2) = checkBinOpElements OpMul TInt TInt TInt c e1 e2
-        impl c (OpDiv _ e1 e2) = checkBinOpElements OpDiv TInt TInt TInt c e1 e2
-        impl c (OpAdd _ e1 e2) = checkBinOpElements OpAdd TInt TInt TInt c e1 e2
-        impl c (OpSub _ e1 e2) = checkBinOpElements OpSub TInt TInt TInt c e1 e2
-        impl c (OpLT  _ e1 e2) = checkBinOpElements OpLT TInt TInt TBool c e1 e2
-        impl c (OpEQ  _ e1 e2) = checkBinOpElements OpEQ TInt TInt TBool c e1 e2
+        impl c (OpMul _ e1 e2) = checkBinOpElements OpMul TInt TInt TInt  c e1 e2
+        impl c (OpDiv _ e1 e2) = checkBinOpElements OpDiv TInt TInt TInt  c e1 e2
+        impl c (OpAdd _ e1 e2) = checkBinOpElements OpAdd TInt TInt TInt  c e1 e2
+        impl c (OpSub _ e1 e2) = checkBinOpElements OpSub TInt TInt TInt  c e1 e2
+        impl c (OpLT  _ e1 e2) = checkBinOpElements OpLT  TInt TInt TBool c e1 e2
+        impl c (OpEQ  _ e1 e2) = checkBinOpElements OpEQ  TInt TInt TBool c e1 e2
         impl c (If _ e e1 e2) = do
           (s1, e') <- impl c e
           s2 <- lift $ unify (Expr.getType e') TBool

@@ -109,6 +109,7 @@ instance Show Instr where
   show (Ret e) = "  ret i64 " ++ show e
   show (Lbl x) = x ++ ":"
   show (Malloc x n) =
+    --printf "  %s = call i8* @GC_malloc(i64 %d)" x n
     printf "  %s = call i8* @malloc(i64 %d)" x n
   show (Bitcast x e srcTy dstTy) =
     printf "  %s = bitcast %s %s to %s" x srcTy (show e) dstTy
@@ -312,6 +313,7 @@ compile e =
   let (result, cs) = runCompilation (compileExpr e VId) emptyCompState in
   unlines [
       "; Implementation defined external declarations",
+      --"declare i8* @GC_malloc(i64)",
       "declare i8* @malloc(i64)",
       "; User defined external declarations",
       unlines (map showExtern (csExternVars cs)),

@@ -5,8 +5,8 @@ stack build
 
 case $1 in
   run)
-    echo "$2" | stack exec mini-ml-exe | llc-3.5 -filetype=obj -o prog.o
-    clang -o prog src/libutil.c prog.o
+    echo "$2" | stack exec mini-ml-exe | llc-3.5 -filetype=obj -O3 -o prog.o
+    clang -o prog src/libutil.c prog.o -lgc
     rm prog.o
     ./prog
     ;;
