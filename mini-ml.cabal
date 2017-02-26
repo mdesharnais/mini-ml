@@ -20,6 +20,9 @@ library
   exposed-modules:     Lexer
                      , Parser
                      , Type
+                     , TypeContext
+                     , TypeInference
+                     , TypeSubstitution
                      , FreshName
                      , Interpreter
                      , Compiler

@@ -5,11 +5,14 @@ import qualified Interpreter
 import qualified Lexer
 import qualified Parser
 import qualified Type
+import qualified TypeContext as TyContext
+import qualified TypeInference as TyInferance
 
 import Expr(Expr(..))
 import Interpreter(Value(..))
 import Test.HUnit
 import Type(Type(..), TypeSchema(..))
+import TypeContext(Context)
 
 litBool = [
     ("true", LitBool () True),
@@ -64,32 +67,32 @@ testEquivalences = [
      "let min = (fun x -> (fun y -> (if (x < y) then x else y))) in ((min 2) 3)")
   ]
 
-testInference :: [(Type.Context, String, Expr TypeSchema Type)]
+testInference :: [(Context, String, Expr TypeSchema Type)]
 testInference =
   let int = LitInt TInt in
   let bool = LitBool TBool in [
-    (Type.emptyContext, "true", bool True),
-    (Type.emptyContext, "false", bool False),
-    (Type.emptyContext, "1", int 1),
-    (Type.emptyContext, "12", int 12),
-    (Type.emptyContext, "123", int 123),
-    (Type.emptyContext, "3 - 2", OpSub TInt (int 3) (int 2)),
-    (Type.emptyContext, "3 + 2", OpAdd TInt (int 3) (int 2)),
-    (Type.emptyContext, "3 * 2", OpMul TInt (int 3) (int 2)),
-    (Type.emptyContext, "3 / 2", OpDiv TInt (int 3) (int 2)),
-    (Type.emptyContext, "3 < 2", OpLT TBool (int 3) (int 2)),
-    (Type.emptyContext, "3 = 2", OpEQ TBool (int 3) (int 2)),
-    (Type.emptyContext, "if true then 0 else 1",
+    (TyContext.empty, "true", bool True),
+    (TyContext.empty, "false", bool False),
+    (TyContext.empty, "1", int 1),
+    (TyContext.empty, "12", int 12),
+    (TyContext.empty, "123", int 123),
+    (TyContext.empty, "3 - 2", OpSub TInt (int 3) (int 2)),
+    (TyContext.empty, "3 + 2", OpAdd TInt (int 3) (int 2)),
+    (TyContext.empty, "3 * 2", OpMul TInt (int 3) (int 2)),
+    (TyContext.empty, "3 / 2", OpDiv TInt (int 3) (int 2)),
+    (TyContext.empty, "3 < 2", OpLT TBool (int 3) (int 2)),
+    (TyContext.empty, "3 = 2", OpEQ TBool (int 3) (int 2)),
+    (TyContext.empty, "if true then 0 else 1",
       If TInt (bool True) (int 0) (int 1)),
-    (Type.emptyContext, "extern f",
+    (TyContext.empty, "extern f",
       ExternVar (TFun TInt TInt) "f"),
-    (Type.emptyContext, "fun x -> x",
+    (TyContext.empty, "fun x -> x",
       Abs (TFun (TVar "x0") (TVar "x0")) "x" (Var (TVar "x0") "x")),
-    (Type.emptyContext, "fun x -> true",
+    (TyContext.empty, "fun x -> true",
       Abs (TFun (TVar "x0") TBool) "x" (bool True)),
-    (Type.emptyContext, "let x = true in 3",
+    (TyContext.empty, "let x = true in 3",
       Let TInt ("x", TSType TBool) (bool True) (int 3)),
-    (Type.emptyContext, "let min = fun x -> fun y -> if x < y then x else y in min 2 3",
+    (TyContext.empty, "let min = fun x -> fun y -> if x < y then x else y in min 2 3",
       Let TInt ("min", (TSType (TFun TInt (TFun TInt TInt))))
         (Abs (TFun TInt (TFun TInt TInt)) "x"
           (Abs (TFun TInt TInt) "y"
@@ -101,7 +104,7 @@ testInference =
             (Var (TFun TInt (TFun TInt TInt)) "min")
             (int 2))
           (int 3))),
-    (Type.emptyContext, "let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3",
+    (TyContext.empty, "let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3",
       LetRec TInt ("sum", TSType (TFun TInt TInt))
         ("n",
           (If TInt (OpEQ TBool (Var TInt "n") (int 0))
@@ -112,7 +115,7 @@ testInference =
                 (Var (TFun TInt TInt) "sum")
                 (OpSub TInt (Var TInt "n") (int 1))))))
         (App TInt (Var (TFun TInt TInt) "sum") (int 3))),
-    (Type.emptyContext, "let f = fun x -> fun y -> if true then x else y in f 2 3",
+    (TyContext.empty, "let f = fun x -> fun y -> if true then x else y in f 2 3",
       Let TInt ("f", TSForall "x1" (TSType (TFun (TVar "x1") (TFun (TVar "x1") (TVar "x1")))))
         (Abs (TFun (TVar "x1") (TFun (TVar "x1") (TVar "x1"))) "x"
           (Abs (TFun (TVar "x1") (TVar "x1")) "y"
@@ -124,7 +127,7 @@ testInference =
               (Var (TFun TInt (TFun TInt TInt)) "f")
               (int 2))
           (int 3))),
-    (Type.emptyContext, "let f = fun b -> fun x -> fun y -> if b then x else y in f true 2 3",
+    (TyContext.empty, "let f = fun b -> fun x -> fun y -> if b then x else y in f true 2 3",
       Let TInt ("f", (TSForall "x2" (TSType
           (TFun TBool (TFun (TVar "x2") (TFun (TVar "x2") (TVar "x2")))))))
         (Abs (TFun TBool (TFun (TVar "x2") (TFun (TVar "x2") (TVar "x2")))) "b"
@@ -140,27 +143,27 @@ testInference =
               (bool True))
             (int 2))
           (int 3))),
-    (Type.emptyContext, "let i = fun x -> x in if i true then i 1 else i 2",
+    (TyContext.empty, "let i = fun x -> x in if i true then i 1 else i 2",
       Let TInt ("i", TSForall "x0" (TSType (TFun (TVar "x0") (TVar "x0"))))
         (Abs (TFun (TVar "x0") (TVar "x0")) "x"
           (Var (TVar "x0") "x"))
         (If TInt (App TBool (Var (TFun TBool TBool) "i") (bool True))
           (App TInt (Var (TFun TInt TInt) "i") (int 1))
           (App TInt (Var (TFun TInt TInt) "i") (int 2)))),
-    (Type.emptyContext, "let foo = fun b -> if b then true else false in foo true",
+    (TyContext.empty, "let foo = fun b -> if b then true else false in foo true",
       Let TBool ("foo", (TSType (TFun TBool TBool)))
         (Abs (TFun TBool TBool) "b"
           (If TBool (Var TBool "b")
             (bool True)
             (bool False)))
         (App TBool (Var (TFun TBool TBool) "foo") (bool True))),
-    (Type.emptyContext, "let rec f = fun x -> x in if f true then f 3 else f 4",
+    (TyContext.empty, "let rec f = fun x -> x in if f true then f 3 else f 4",
       (LetRec TInt ("f", TSForall "x1" (TSType (TFun (TVar "x1") (TVar "x1"))))
         ("x", (Var (TVar "x1")) "x")
         (If TInt (App TBool (Var (TFun TBool TBool) "f") (bool True))
           (App TInt (Var (TFun TInt TInt) "f") (int 3))
           (App TInt (Var (TFun TInt TInt) "f") (int 4))))),
-    (Type.emptyContext,
+    (TyContext.empty,
       "let not = fun b -> if b then b else false in " ++
       "let rec foo = fun b -> fun x -> fun y -> " ++
         "if b then x else foo (not b) y x in " ++
@@ -193,7 +196,7 @@ testInference =
                 (bool False))
               (int 1))
             (int 1)))),
-    (Type.emptyContext, "fun fix -> fun f -> f (fun y -> fix f y)",
+    (TyContext.empty, "fun fix -> fun f -> f (fun y -> fix f y)",
       Abs
         (TFun
           (TFun
@@ -220,7 +223,7 @@ testInference =
                   (Var (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5")) "f"))
                 (Var (TVar "x2") "y")))))
       ),
-    (Type.emptyContext, "let rec fix = fun f -> f (fun y -> fix f y) in fix",
+    (TyContext.empty, "let rec fix = fun f -> f (fun y -> fix f y) in fix",
     LetRec
       (TFun
         (TFun
@@ -263,7 +266,7 @@ testInference =
               (TFun (TVar "x7") (TVar "x6")))
             (TFun (TVar "x7") (TVar "x6")))
           "fix")),
-    (Type.emptyContext,
+    (TyContext.empty,
       "fun f -> f (fun x -> f (fun y -> y))",
       Abs (TFun (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) (TVar "x4")) "f"
         (App (TVar "x4")
@@ -273,7 +276,7 @@ testInference =
               (Var (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) "f")
               (Abs (TFun (TVar "x4") (TVar "x4")) "y"
                 (Var (TVar "x4") "y")))))),
-    (Type.emptyContext,
+    (TyContext.empty,
       "fun f -> f (fun x -> f (fun y -> x))",
       Abs (TFun (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) (TVar "x4")) "f"
         (App (TVar "x4")
@@ -283,15 +286,15 @@ testInference =
               (Var (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) "f")
               (Abs (TFun (TVar "x4") (TVar "x4")) "y"
                 (Var (TVar "x4") "x")))))),
-    (Type.singletonContext ("x", TInt), "x",
+    (TyContext.singleton ("x", TInt), "x",
       Var TInt "x"),
-    (Type.singletonContext ("f", TFun TInt TInt), "f",
+    (TyContext.singleton ("f", TFun TInt TInt), "f",
       Var (TFun TInt TInt) "f"),
-    (Type.singletonContext ("f", TFun TInt TInt), "f 3",
+    (TyContext.singleton ("f", TFun TInt TInt), "f 3",
       App TInt (Var (TFun TInt TInt) "f") (int 3)),
-    (Type.singletonContext ("x", TVar "x0"), "x - 1",
+    (TyContext.singleton ("x", TVar "x0"), "x - 1",
       OpSub TInt (Var TInt "x") (int 1)),
-    (Type.contextFromList [("x", TVar "x0"), ("y", TVar "x1")], "x y",
+    (TyContext.fromListTy [("x", TVar "x0"), ("y", TVar "x1")], "x y",
       App (TVar "x2")
         (Var (TFun (TVar "x1") (TVar "x2")) "x")
         (Var (TVar "x1") "y"))
@@ -417,12 +420,12 @@ normalFormTests = [
   ]
 
 fvTests = [
-    (Type.emptyContext, "fun x -> x", []),
-    (Type.singletonContext ("y", TInt), "fun x -> y", ["y"]),
-    (Type.singletonContext ("y", TInt), "fun x -> x + y", ["y"]),
-    (Type.emptyContext, "let x = 2 + 3 in x", []),
-    (Type.emptyContext, "let x = 5 in let f = fun y -> x + y in f 3", []),
-    (Type.singletonContext ("sum", TFun TInt TInt), "fun n -> if n = 0 then 0 else n + sum (n - 1)", ["sum"])
+    (TyContext.empty, "fun x -> x", []),
+    (TyContext.singleton ("y", TInt), "fun x -> y", ["y"]),
+    (TyContext.singleton ("y", TInt), "fun x -> x + y", ["y"]),
+    (TyContext.empty, "let x = 2 + 3 in x", []),
+    (TyContext.empty, "let x = 5 in let f = fun y -> x + y in f 3", []),
+    (TyContext.singleton ("sum", TFun TInt TInt), "fun n -> if n = 0 then 0 else n + sum (n - 1)", ["sum"])
   ]
 
 closureTests = [
@@ -495,13 +498,13 @@ testComparaison (prog1, prog2) =
         (Parser.parse (Lexer.alexScanTokens prog1))
         (Parser.parse (Lexer.alexScanTokens prog2))
 
-testTypeInference :: (Type.Context, String, Expr TypeSchema Type) -> Test
+testTypeInference :: (Context, String, Expr TypeSchema Type) -> Test
 testTypeInference (ctxt, prog, expr) =
   let term = Parser.parse (Lexer.alexScanTokens prog)
    in TestLabel ("program '" ++ prog ++ "' has type '" ++
         show (Expr.getType expr) ++ "'") $
         TestCase $
-          case Type.infer ctxt term of
+          case TyInferance.infer ctxt term of
             Just (subst, expr') ->
               assertEqual (show subst) expr expr'
             Nothing -> assertFailure "did not type checked"
@@ -519,15 +522,15 @@ testNormalForm :: (String, String) -> Test
 testNormalForm (prog, nf) =
   let term = Parser.parse (Lexer.alexScanTokens prog) in
   TestLabel prog $ TestCase $
-    case Type.infer Type.emptyContext term of
+    case TyInferance.infer TyContext.empty term of
       Nothing -> assertFailure "did not type checked"
       Just (_, expr) -> assertEqual "" nf (show (Compiler.toNormalForm expr))
 
-testFreeVariables :: (Type.Context, String, [String]) -> Test
+testFreeVariables :: (Context, String, [String]) -> Test
 testFreeVariables (ctxt, prog, fvs) =
   let term = Parser.parse (Lexer.alexScanTokens prog) in
   TestLabel prog $ TestCase $
-    case Type.infer ctxt term of
+    case TyInferance.infer ctxt term of
       Nothing -> assertFailure "did not type checked"
       Just (_, expr) ->
         assertEqual "" fvs (map fst (Compiler.fv (Compiler.toNormalForm expr)))
@@ -536,7 +539,7 @@ testClosure :: (String, String) -> Test
 testClosure (prog, nfc) =
   let term = Parser.parse (Lexer.alexScanTokens prog) in
   TestLabel prog $ TestCase $
-    case Type.infer Type.emptyContext term of
+    case TyInferance.infer TyContext.empty term of
       Nothing -> assertFailure "did not type checked"
       Just (_, expr) ->
         let normForm = Compiler.toNormalForm expr in
