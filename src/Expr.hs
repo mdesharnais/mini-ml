@@ -20,7 +20,7 @@ data Expr tySch ty =
   LetRec    ty (Id, tySch) (Id, (Expr tySch ty)) (Expr tySch ty) |
   Abs       ty Id (Expr tySch ty) |
   App       ty (Expr tySch ty) (Expr tySch ty)
-  deriving (Eq)
+  deriving (Eq, Show)
 
 getType :: Expr sch ty -> ty
 getType (LitInt    ty _) = ty
@@ -59,6 +59,7 @@ instance Bifunctor Expr where
   bimap f g (Abs       ty x e) = Abs (g ty) x (bimap f g e)
   bimap f g (App       ty e1 e2) = App (g ty) (bimap f g e1) (bimap f g e2)
 
+{-
 instance (Show tySch, Show ty) => Show (Expr tySch ty) where
   show (LitInt _ n) = show n
   show (LitBool _ b) = show b
@@ -81,3 +82,4 @@ instance (Show tySch, Show ty) => Show (Expr tySch ty) where
   show (Abs _ x e1) = "(fun " ++ x ++ " -> " ++ show e1 ++ ")"
   show (App ty e1 e2) =
     "(" ++ show e1 ++ " " ++ show e2 ++ " : " ++ show ty ++ ")"
+-}

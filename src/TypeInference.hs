@@ -17,7 +17,7 @@ import TypeContext(Context)
 import TypeSubstitution(Subst)
 
 genFreshTVar :: Monad m => NameGenT m Type
-genFreshTVar = fresh >>= (return . TVar)
+genFreshTVar = fmap TVar fresh
 
 unify :: Type -> Type -> Maybe Subst
 unify (TVar x) (TVar y) = Just $
