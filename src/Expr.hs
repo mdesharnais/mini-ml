@@ -1,6 +1,9 @@
 module Expr where
 
+import qualified Data.List as List
+
 import Data.Bifunctor
+import FreeVars
 
 type Id = String
 
@@ -83,3 +86,25 @@ instance (Show tySch, Show ty) => Show (Expr tySch ty) where
   show (App ty e1 e2) =
     "(" ++ show e1 ++ " " ++ show e2 ++ " : " ++ show ty ++ ")"
 -}
+
+instance FreeVars (Expr a b) where
+  freeVars (LitInt _ n)         = []
+  freeVars (LitBool _ b)        = []
+  freeVars (Var ty x)           = [x]
+  freeVars (ExternVar _ x)      = [x]
+  freeVars (OpAdd _ e1 e2)      = List.union (freeVars e1) (freeVars e2)
+  freeVars (OpSub _ e1 e2)      = List.union (freeVars e1) (freeVars e2)
+  freeVars (OpMul _ e1 e2)      = List.union (freeVars e1) (freeVars e2)
+  freeVars (OpDiv _ e1 e2)      = List.union (freeVars e1) (freeVars e2)
+  freeVars (OpLT  _ e1 e2)      = List.union (freeVars e1) (freeVars e2)
+  freeVars (OpEQ  _ e1 e2)      = List.union (freeVars e1) (freeVars e2)
+  freeVars (If _ e1 e2 e3)      =
+    let u = List.union in (freeVars e1) `u` (freeVars e2) `u` (freeVars e2)
+  freeVars (Let _ (x, _) e1 e2) =
+    List.union (freeVars e1) [a | a <- freeVars e2, a /= x]
+  freeVars (LetRec _ (f, _) (x, e1) e2) =
+    List.union
+      [a | a <- freeVars e1, a /= f && a /= x]
+      [a | a <- freeVars e2, a /= f]
+  freeVars (Abs _ x e1)         = [a | a <- freeVars e1, a /= x]
+  freeVars (App ty e1 e2)       = List.union (freeVars e1) (freeVars e2)
