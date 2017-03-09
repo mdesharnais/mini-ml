@@ -25,20 +25,15 @@ singletonTy p = addTy p empty
 singletonAn :: (AnVar, AnVar) -> Subst
 singletonAn p = addAn p empty
 
-applyTyImpl :: TySubst -> Type -> Type
-applyTyImpl s TBool = TBool
-applyTyImpl s TInt = TInt
-applyTyImpl s (TFun b t1 t2) = TFun b (applyTyImpl s t1) (applyTyImpl s t2)
-applyTyImpl s (TVar x) = Maybe.fromMaybe (TVar x) (List.lookup x s)
+applyAn :: Subst -> AnVar -> AnVar
+applyAn (_, as) a = Maybe.fromMaybe a (List.lookup a as)
 
 applyTy :: Subst -> Type -> Type
-applyTy (ts, _) = applyTyImpl ts
-
-applyAnImpl :: AnSubst -> AnVar -> AnVar
-applyAnImpl s a = Maybe.fromMaybe a (List.lookup a s)
-
-applyAn :: Subst -> AnVar -> AnVar
-applyAn (_, as) = applyAnImpl as
+applyTy s@(ts, as) TBool = TBool
+applyTy s@(ts, as) TInt = TInt
+applyTy s@(ts, as) (TFun b t1 t2) =
+  TFun (applyAn s b) (applyTy s t1) (applyTy s t2)
+applyTy s@(ts, as) (TVar x) = Maybe.fromMaybe (TVar x) (List.lookup x ts)
 
 applyTySchema :: Subst -> TypeSchema -> TypeSchema
 applyTySchema s (TSType ty) = TSType (applyTy s ty)
@@ -59,4 +54,6 @@ applyContext s = map (\(x, tySchema) -> (x, applyTySchema s tySchema))
 comp :: Subst -> Subst -> Subst
 comp (as, bs) (cs, ds) =
   let compLists xs ys apply = map (\(x, y) -> (x, apply ys y)) xs ++ ys in
-  (compLists as cs applyTyImpl, compLists bs ds applyAnImpl)
+  let ts = compLists cs as (applyTy . flip (,) []) in
+  let as = compLists ds bs (applyAn . (,) []) in
+  (ts, as)

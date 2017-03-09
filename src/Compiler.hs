@@ -8,7 +8,7 @@ import qualified Expr
 import Data.List((\\))
 import Expr(Expr(..), Id)
 import FreshName
-import Type(TyExpr, Type(..), TypeSchema(..))
+import Type
 
 -- Intermediate language in normal form
 

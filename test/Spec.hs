@@ -1,17 +1,19 @@
+{-# LANGUAGE OverloadedLists #-}
 import qualified Compiler
 import qualified Data.Char
 import qualified Expr
+import qualified Data.Set as Set
 import qualified Interpreter
 import qualified Lexer
 import qualified Parser
 import qualified Type
-import qualified TypeContext as TyContext
+import qualified TypeContext as TyCtxt
 import qualified TypeInference as TyInferance
 
 import Expr(Expr(..))
 import Interpreter(Value(..))
 import Test.HUnit
-import Type(Type(..), TypeSchema(..))
+import Type
 import TypeContext(Context)
 
 litBool = [
@@ -71,233 +73,438 @@ testInference :: [(Context, String, Expr TypeSchema Type)]
 testInference =
   let int = LitInt TInt in
   let bool = LitBool TBool in [
-    (TyContext.empty, "true", bool True),
-    (TyContext.empty, "false", bool False),
-    (TyContext.empty, "1", int 1),
-    (TyContext.empty, "12", int 12),
-    (TyContext.empty, "123", int 123),
-    (TyContext.empty, "3 - 2", OpSub TInt (int 3) (int 2)),
-    (TyContext.empty, "3 + 2", OpAdd TInt (int 3) (int 2)),
-    (TyContext.empty, "3 * 2", OpMul TInt (int 3) (int 2)),
-    (TyContext.empty, "3 / 2", OpDiv TInt (int 3) (int 2)),
-    (TyContext.empty, "3 < 2", OpLT TBool (int 3) (int 2)),
-    (TyContext.empty, "3 = 2", OpEQ TBool (int 3) (int 2)),
-    (TyContext.empty, "if true then 0 else 1",
+    (TyCtxt.empty, "true", bool True),
+    (TyCtxt.empty, "false", bool False),
+    (TyCtxt.empty, "1", int 1),
+    (TyCtxt.empty, "12", int 12),
+    (TyCtxt.empty, "123", int 123),
+    (TyCtxt.empty, "3 - 2", OpSub TInt (int 3) (int 2)),
+    (TyCtxt.empty, "3 + 2", OpAdd TInt (int 3) (int 2)),
+    (TyCtxt.empty, "3 * 2", OpMul TInt (int 3) (int 2)),
+    (TyCtxt.empty, "3 / 2", OpDiv TInt (int 3) (int 2)),
+    (TyCtxt.empty, "3 < 2", OpLT TBool (int 3) (int 2)),
+    (TyCtxt.empty, "3 = 2", OpEQ TBool (int 3) (int 2)),
+
+    (TyCtxt.empty, "if true then 0 else 1",
       If TInt (bool True) (int 0) (int 1)),
-    (TyContext.empty, "extern f",
-      ExternVar (TFun TInt TInt) "f"),
-    (TyContext.empty, "fun x -> x",
-      Abs (TFun (TVar "x0") (TVar "x0")) "x" (Var (TVar "x0") "x")),
-    (TyContext.empty, "fun x -> true",
-      Abs (TFun (TVar "x0") TBool) "x" (bool True)),
-    (TyContext.empty, "let x = true in 3",
+
+    (TyCtxt.empty, "extern f",
+      ExternVar (TFun "x0" TInt TInt) "f"),
+
+    (TyCtxt.empty, "fun x -> x",
+      Abs (TFun "x1" (TVar "x0") (TVar "x0")) "x" (Var (TVar "x0") "x")),
+
+    (TyCtxt.empty, "fun x -> fun y -> x",
+      Abs (TFun "x3" (TVar "x0") (TFun "x2" (TVar "x1") (TVar "x0"))) "x"
+        (Abs (TFun "x2" (TVar "x1") (TVar "x0")) "y"
+          (Var (TVar "x0") "x"))),
+
+    (TyCtxt.empty, "fun x -> fun y -> y",
+      Abs (TFun "x3" (TVar "x0") (TFun "x2" (TVar "x1") (TVar "x1"))) "x"
+        (Abs (TFun "x2" (TVar "x1") (TVar "x1")) "y"
+          (Var (TVar "x1") "y"))),
+
+    (TyCtxt.empty, "fun x -> true",
+      Abs (TFun "x1" (TVar "x0") TBool) "x" (bool True)),
+    (TyCtxt.empty, "let x = true in 3",
       Let TInt ("x", TSType TBool) (bool True) (int 3)),
-    (TyContext.empty, "let min = fun x -> fun y -> if x < y then x else y in min 2 3",
-      Let TInt ("min", (TSType (TFun TInt (TFun TInt TInt))))
-        (Abs (TFun TInt (TFun TInt TInt)) "x"
-          (Abs (TFun TInt TInt) "y"
+    (TyCtxt.empty, "let min = fun x -> fun y -> if x < y then x else y in min 2 3",
+      Let TInt ("min", (TSType (TFun "x3" TInt (TFun "x2" TInt TInt))))
+        (Abs (TFun "x3" TInt (TFun "x2" TInt TInt)) "x"
+          (Abs (TFun "x2" TInt TInt) "y"
             (If TInt (OpLT TBool (Var TInt "x") (Var TInt "y"))
               (Var TInt "x")
               (Var TInt "y"))))
         (App TInt
-          (App (TFun TInt TInt)
-            (Var (TFun TInt (TFun TInt TInt)) "min")
+          (App (TFun "x2" TInt TInt)
+            (Var (TFun "x3" TInt (TFun "x2" TInt TInt)) "min")
             (int 2))
           (int 3))),
-    (TyContext.empty, "let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3",
-      LetRec TInt ("sum", TSType (TFun TInt TInt))
+
+    (TyCtxt.empty, "let rec f = fun x -> x in f 1",
+      LetRec TInt ("f", TSForall "x1"
+        (TSType (TFun "x2" (TVar "x1") (TVar "x1"))))
+        ("x", Var (TVar "x1") "x")
+        (App TInt (Var (TFun "x2" TInt TInt) "f") (int 1))),
+
+    (TyCtxt.empty, "let rec f = fun x -> fun y -> x in f 1 2",
+      LetRec TInt ("f",TSForall "x2" (TSForall "x1"
+        (TSType (TFun "x4" (TVar "x1") (TFun "x3" (TVar "x2") (TVar "x1"))))))
+        ("x", Abs (TFun "x3" (TVar "x2") (TVar "x1")) "y" (Var (TVar "x1") "x"))
+        (App TInt
+          (App (TFun "x3" TInt TInt)
+            (Var (TFun "x4" TInt (TFun "x3" TInt TInt)) "f")
+            (LitInt TInt 1))
+        (LitInt TInt 2))),
+
+    (TyCtxt.empty, "let rec sum = fun n -> if n = 0 then 0 else n + sum (n - 1) in sum 3",
+      LetRec TInt ("sum", TSType (TFun "x3" TInt TInt))
         ("n",
           (If TInt (OpEQ TBool (Var TInt "n") (int 0))
             (int 0)
             (OpAdd TInt
               (Var TInt "n")
               (App TInt
-                (Var (TFun TInt TInt) "sum")
+                (Var (TFun "x3" TInt TInt) "sum")
                 (OpSub TInt (Var TInt "n") (int 1))))))
-        (App TInt (Var (TFun TInt TInt) "sum") (int 3))),
-    (TyContext.empty, "let f = fun x -> fun y -> if true then x else y in f 2 3",
-      Let TInt ("f", TSForall "x1" (TSType (TFun (TVar "x1") (TFun (TVar "x1") (TVar "x1")))))
-        (Abs (TFun (TVar "x1") (TFun (TVar "x1") (TVar "x1"))) "x"
-          (Abs (TFun (TVar "x1") (TVar "x1")) "y"
-            (If (TVar "x1") (bool True)
-              (Var (TVar "x1") "x")
-              (Var (TVar "x1") "y"))))
+        (App TInt (Var (TFun "x3" TInt TInt) "sum") (int 3))),
+
+    (TyCtxt.empty, "let f = fun x -> fun y -> if true then x else y in f 2 3",
+      Let TInt ("f", TSForall "x0"
+        (TSType (TFun "x3" (TVar "x0") (TFun "x2" (TVar "x0") (TVar "x0")))))
+        (Abs (TFun "x3" (TVar "x0") (TFun "x2" (TVar "x0") (TVar "x0"))) "x"
+          (Abs (TFun "x2" (TVar "x0") (TVar "x0")) "y"
+            (If (TVar "x0") (bool True)
+              (Var (TVar "x0") "x")
+              (Var (TVar "x0") "y"))))
           (App TInt
-            (App (TFun TInt TInt)
-              (Var (TFun TInt (TFun TInt TInt)) "f")
+            (App (TFun "x2" TInt TInt)
+              (Var (TFun "x3" TInt (TFun "x2" TInt TInt)) "f")
               (int 2))
           (int 3))),
-    (TyContext.empty, "let f = fun b -> fun x -> fun y -> if b then x else y in f true 2 3",
-      Let TInt ("f", (TSForall "x2" (TSType
-          (TFun TBool (TFun (TVar "x2") (TFun (TVar "x2") (TVar "x2")))))))
-        (Abs (TFun TBool (TFun (TVar "x2") (TFun (TVar "x2") (TVar "x2")))) "b"
-          (Abs (TFun (TVar "x2") (TFun (TVar "x2") (TVar "x2"))) "x"
-            (Abs (TFun (TVar "x2") (TVar "x2")) "y"
-              (If (TVar "x2") (Var TBool "b")
-                (Var (TVar "x2") "x")
-                (Var (TVar "x2") "y")))))
+    (TyCtxt.empty, "let f = fun b -> fun x -> fun y -> if b then x else y in f true 2 3",
+      Let TInt ("f", (TSForall "x1" (TSType
+          (TFun "x5" TBool (TFun "x4" (TVar "x1") (TFun "x3" (TVar "x1") (TVar "x1")))))))
+        (Abs (TFun "x5" TBool (TFun "x4" (TVar "x1") (TFun "x3" (TVar "x1") (TVar "x1")))) "b"
+          (Abs (TFun "x4" (TVar "x1") (TFun "x3" (TVar "x1") (TVar "x1"))) "x"
+            (Abs (TFun "x3" (TVar "x1") (TVar "x1")) "y"
+              (If (TVar "x1") (Var TBool "b")
+                (Var (TVar "x1") "x")
+                (Var (TVar "x1") "y")))))
         (App TInt
-          (App (TFun TInt TInt)
-            (App (TFun TInt (TFun TInt TInt))
-              (Var (TFun TBool (TFun TInt (TFun TInt TInt))) "f")
+          (App (TFun "x3" TInt TInt)
+            (App (TFun "x4" TInt (TFun "x3" TInt TInt))
+              (Var (TFun "x5" TBool (TFun "x4" TInt (TFun "x3" TInt TInt))) "f")
               (bool True))
             (int 2))
           (int 3))),
-    (TyContext.empty, "let i = fun x -> x in if i true then i 1 else i 2",
-      Let TInt ("i", TSForall "x0" (TSType (TFun (TVar "x0") (TVar "x0"))))
-        (Abs (TFun (TVar "x0") (TVar "x0")) "x"
+    (TyCtxt.empty, "let i = fun x -> x in if i true then i 1 else i 2",
+      Let TInt ("i", TSForall "x0" (TSType (TFun "x1" (TVar "x0") (TVar "x0"))))
+        (Abs (TFun "x1" (TVar "x0") (TVar "x0")) "x"
           (Var (TVar "x0") "x"))
-        (If TInt (App TBool (Var (TFun TBool TBool) "i") (bool True))
-          (App TInt (Var (TFun TInt TInt) "i") (int 1))
-          (App TInt (Var (TFun TInt TInt) "i") (int 2)))),
-    (TyContext.empty, "let foo = fun b -> if b then true else false in foo true",
-      Let TBool ("foo", (TSType (TFun TBool TBool)))
-        (Abs (TFun TBool TBool) "b"
+        (If TInt (App TBool (Var (TFun "x1" TBool TBool) "i") (bool True))
+          (App TInt (Var (TFun "x1" TInt TInt) "i") (int 1))
+          (App TInt (Var (TFun "x1" TInt TInt) "i") (int 2)))),
+    (TyCtxt.empty, "let foo = fun b -> if b then true else false in foo true",
+      Let TBool ("foo", (TSType (TFun "x1" TBool TBool)))
+        (Abs (TFun "x1" TBool TBool) "b"
           (If TBool (Var TBool "b")
             (bool True)
             (bool False)))
-        (App TBool (Var (TFun TBool TBool) "foo") (bool True))),
-    (TyContext.empty, "let rec f = fun x -> x in if f true then f 3 else f 4",
-      (LetRec TInt ("f", TSForall "x1" (TSType (TFun (TVar "x1") (TVar "x1"))))
+        (App TBool (Var (TFun "x1" TBool TBool) "foo") (bool True))),
+    (TyCtxt.empty, "let rec f = fun x -> x in if f true then f 3 else f 4",
+      (LetRec TInt ("f", TSForall "x1" (TSType (TFun "x2" (TVar "x1") (TVar "x1"))))
         ("x", (Var (TVar "x1")) "x")
-        (If TInt (App TBool (Var (TFun TBool TBool) "f") (bool True))
-          (App TInt (Var (TFun TInt TInt) "f") (int 3))
-          (App TInt (Var (TFun TInt TInt) "f") (int 4))))),
-    (TyContext.empty,
+        (If TInt (App TBool (Var (TFun "x2" TBool TBool) "f") (bool True))
+          (App TInt (Var (TFun "x2" TInt TInt) "f") (int 3))
+          (App TInt (Var (TFun "x2" TInt TInt) "f") (int 4))))),
+    (TyCtxt.empty,
       "let not = fun b -> if b then b else false in " ++
       "let rec foo = fun b -> fun x -> fun y -> " ++
         "if b then x else foo (not b) y x in " ++
       "foo false 1 1",
-        Let TInt ("not", TSType (TFun TBool TBool))
-          (Abs (TFun TBool TBool) "b"
+        Let TInt ("not", TSType (TFun "x1" TBool TBool))
+          (Abs (TFun "x1" TBool TBool) "b"
             (If TBool (Var TBool "b")
               (Var TBool "b")
               (bool False)))
-        (LetRec TInt ("foo", TSForall "x8" (TSType
-          (TFun TBool (TFun (TVar "x8") (TFun (TVar "x8") (TVar "x8"))))))
-          ("b", Abs (TFun (TVar "x8") (TFun (TVar "x8") (TVar "x8"))) "x"
-            (Abs (TFun (TVar "x8") (TVar "x8")) "y"
-              (If (TVar "x8") (Var TBool "b")
-                (Var (TVar "x8") "x")
-                (App (TVar "x8")
-                  (App (TFun (TVar "x8") (TVar "x8"))
-                    (App (TFun (TVar "x8") (TFun (TVar "x8") (TVar "x8")))
-                      (Var (TFun TBool (TFun (TVar "x8")
-                        (TFun (TVar "x8") (TVar "x8")))) "foo")
+        (LetRec TInt ("foo", TSForall "x5" (TSType
+          (TFun "x9" TBool (TFun "x11" (TVar "x5") (TFun "x13" (TVar "x5") (TVar "x5"))))))
+          ("b", Abs (TFun "x11" (TVar "x5") (TFun "x13" (TVar "x5") (TVar "x5"))) "x"
+            (Abs (TFun "x13" (TVar "x5") (TVar "x5")) "y"
+              (If (TVar "x5") (Var TBool "b")
+                (Var (TVar "x5") "x")
+                (App (TVar "x5")
+                  (App (TFun "x13" (TVar "x5") (TVar "x5"))
+                    (App (TFun "x11" (TVar "x5") (TFun "x13" (TVar "x5") (TVar "x5")))
+                      (Var (TFun "x9" TBool (TFun "x11" (TVar "x5")
+                        (TFun "x13" (TVar "x5") (TVar "x5")))) "foo")
                       (App TBool
-                        (Var (TFun TBool TBool) "not")
+                        (Var (TFun "x1" TBool TBool) "not")
                         (Var TBool "b")))
-                    (Var (TVar "x8") "y"))
-                  (Var (TVar "x8") "x")))))
+                    (Var (TVar "x5") "y"))
+                  (Var (TVar "x5") "x")))))
           (App TInt
-            (App (TFun TInt TInt)
-              (App (TFun TInt (TFun TInt TInt))
-                (Var (TFun TBool (TFun TInt (TFun TInt TInt))) "foo")
+            (App (TFun "x13" TInt TInt)
+              (App (TFun "x11" TInt (TFun "x13" TInt TInt))
+                (Var (TFun "x9" TBool (TFun "x11" TInt (TFun "x13" TInt TInt))) "foo")
                 (bool False))
               (int 1))
             (int 1)))),
-    (TyContext.empty, "fun fix -> fun f -> f (fun y -> fix f y)",
+    (TyCtxt.empty, "fun fix -> fun f -> f (fun y -> fix f y)",
       Abs
-        (TFun
-          (TFun
-            (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5"))
-            (TFun (TVar "x2") (TVar "x4")))
-          (TFun
-            (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5"))
-            (TVar "x5")))
+        (TFun "x11"
+          (TFun "x4"
+            (TFun "x9" (TFun "x7" (TVar "x2") (TVar "x5")) (TVar "x8"))
+            (TFun "x6" (TVar "x2") (TVar "x5")))
+          (TFun "x10"
+            (TFun "x9" (TFun "x7" (TVar "x2") (TVar "x5")) (TVar "x8"))
+            (TVar "x8")))
         "fix"
         (Abs
-          (TFun
-            (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5"))
-            (TVar "x5"))
+          (TFun "x10"
+            (TFun "x9" (TFun "x7" (TVar "x2") (TVar "x5")) (TVar "x8"))
+            (TVar "x8"))
           "f"
-          (App (TVar "x5")
-            (Var (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5")) "f")
-            (Abs (TFun (TVar "x2") (TVar "x4")) "y"
-              (App (TVar "x4")
-                (App (TFun (TVar "x2") (TVar "x4"))
+          (App (TVar "x8")
+            (Var (TFun "x9" (TFun "x7" (TVar "x2") (TVar "x5")) (TVar "x8")) "f")
+            (Abs (TFun "x7" (TVar "x2") (TVar "x5")) "y"
+              (App (TVar "x5")
+                (App (TFun "x6" (TVar "x2") (TVar "x5"))
                   (Var
-                    (TFun
-                      (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5"))
-                      (TFun (TVar "x2") (TVar "x4"))) "fix")
-                  (Var (TFun (TFun (TVar "x2") (TVar "x4")) (TVar "x5")) "f"))
+                    (TFun "x4"
+                      (TFun "x9" (TFun "x7" (TVar "x2") (TVar "x5")) (TVar "x8"))
+                      (TFun "x6" (TVar "x2") (TVar "x5"))) "fix")
+                  (Var (TFun "x9" (TFun "x7" (TVar "x2") (TVar "x5")) (TVar "x8")) "f"))
                 (Var (TVar "x2") "y")))))
       ),
-    (TyContext.empty, "let rec fix = fun f -> f (fun y -> fix f y) in fix",
+    (TyCtxt.empty, "let rec fix = fun f -> f (fun y -> fix f y) in fix",
     LetRec
-      (TFun
-        (TFun
-          (TFun (TVar "x7") (TVar "x6"))
-          (TFun (TVar "x7") (TVar "x6")))
-        (TFun (TVar "x7") (TVar "x6")))
+      (TFun "x4"
+        (TFun "x9"
+          (TFun "x7" (TVar "x12") (TVar "x11"))
+          (TFun "x6" (TVar "x12") (TVar "x11")))
+        (TFun "x6" (TVar "x12") (TVar "x11")))
       ("fix",
-        TSForall "x4" (TSForall "x2" (TSType (TFun
-          (TFun
-            (TFun (TVar "x2") (TVar "x4"))
-            (TFun (TVar "x2") (TVar "x4")))
-          (TFun (TVar "x2") (TVar "x4"))))))
+        TSForall "x5" (TSForall "x2" (TSType (TFun "x4"
+          (TFun "x9"
+            (TFun "x7" (TVar "x2") (TVar "x5"))
+            (TFun "x6" (TVar "x2") (TVar "x5")))
+          (TFun "x6" (TVar "x2") (TVar "x5"))))))
       ("f",
-        App (TFun (TVar "x2") (TVar "x4"))
+        App (TFun "x6" (TVar "x2") (TVar "x5"))
           (Var
-            (TFun
-              (TFun (TVar "x2") (TVar "x4"))
-              (TFun (TVar "x2") (TVar "x4")))
+            (TFun "x9"
+              (TFun "x7" (TVar "x2") (TVar "x5"))
+              (TFun "x6" (TVar "x2") (TVar "x5")))
             "f")
-          (Abs (TFun (TVar "x2") (TVar "x4")) "y"
-            (App (TVar "x4")
-              (App (TFun (TVar "x2") (TVar "x4"))
+          (Abs (TFun "x7" (TVar "x2") (TVar "x5")) "y"
+            (App (TVar "x5")
+              (App (TFun "x6" (TVar "x2") (TVar "x5"))
                 (Var
-                  (TFun
-                    (TFun
-                      (TFun (TVar "x2") (TVar "x4"))
-                      (TFun (TVar "x2") (TVar "x4")))
-                    (TFun (TVar "x2") (TVar "x4")))
+                  (TFun "x4"
+                    (TFun "x9"
+                      (TFun "x7" (TVar "x2") (TVar "x5"))
+                      (TFun "x6" (TVar "x2") (TVar "x5")))
+                    (TFun "x6" (TVar "x2") (TVar "x5")))
                   "fix")
                 (Var
-                  (TFun
-                    (TFun (TVar "x2") (TVar "x4"))
-                    (TFun (TVar "x2") (TVar "x4")))
+                  (TFun "x9"
+                    (TFun "x7" (TVar "x2") (TVar "x5"))
+                    (TFun "x6" (TVar "x2") (TVar "x5")))
                   "f"))
               (Var (TVar "x2") "y"))))
         (Var
-          (TFun
-            (TFun
-              (TFun (TVar "x7") (TVar "x6"))
-              (TFun (TVar "x7") (TVar "x6")))
-            (TFun (TVar "x7") (TVar "x6")))
+          (TFun "x4"
+            (TFun "x9"
+              (TFun "x7" (TVar "x12") (TVar "x11"))
+              (TFun "x6" (TVar "x12") (TVar "x11")))
+            (TFun "x6" (TVar "x12") (TVar "x11")))
           "fix")),
-    (TyContext.empty,
+    (TyCtxt.empty,
       "fun f -> f (fun x -> f (fun y -> y))",
-      Abs (TFun (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) (TVar "x4")) "f"
-        (App (TVar "x4")
-          (Var (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) "f")
-          (Abs (TFun (TVar "x4") (TVar "x4")) "x"
-            (App (TVar "x4")
-              (Var (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) "f")
-              (Abs (TFun (TVar "x4") (TVar "x4")) "y"
-                (Var (TVar "x4") "y")))))),
-    (TyContext.empty,
+      Abs (TFun "x9" (TFun "x5" (TFun "x3" (TVar "x2") (TVar "x2")) (TVar "x2")) (TVar "x2")) "f"
+        (App (TVar "x2")
+          (Var (TFun "x5" (TFun "x3" (TVar "x2") (TVar "x2")) (TVar "x2")) "f")
+          (Abs (TFun "x3" (TVar "x2") (TVar "x2")) "x"
+            (App (TVar "x2")
+              (Var (TFun "x5" (TFun "x3" (TVar "x2") (TVar "x2")) (TVar "x2")) "f")
+              (Abs (TFun "x3" (TVar "x2") (TVar "x2")) "y"
+                (Var (TVar "x2") "y")))))),
+    (TyCtxt.empty,
       "fun f -> f (fun x -> f (fun y -> x))",
-      Abs (TFun (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) (TVar "x4")) "f"
-        (App (TVar "x4")
-          (Var (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) "f")
-          (Abs (TFun (TVar "x4") (TVar "x4")) "x"
-            (App (TVar "x4")
-              (Var (TFun (TFun (TVar "x4") (TVar "x4")) (TVar "x4")) "f")
-              (Abs (TFun (TVar "x4") (TVar "x4")) "y"
-                (Var (TVar "x4") "x")))))),
-    (TyContext.singleton ("x", TInt), "x",
+      Abs (TFun "x9" (TFun "x5" (TFun "x3" (TVar "x2") (TVar "x2")) (TVar "x2")) (TVar "x2")) "f"
+        (App (TVar "x2")
+          (Var (TFun "x5" (TFun "x3" (TVar "x2") (TVar "x2")) (TVar "x2")) "f")
+          (Abs (TFun "x3" (TVar "x2") (TVar "x2")) "x"
+            (App (TVar "x2")
+              (Var (TFun "x5" (TFun "x3" (TVar "x2") (TVar "x2")) (TVar "x2")) "f")
+              (Abs (TFun "x3" (TVar "x2") (TVar "x2")) "y"
+                (Var (TVar "x2") "x")))))),
+    (TyCtxt.singleton ("x", TInt), "x",
       Var TInt "x"),
-    (TyContext.singleton ("f", TFun TInt TInt), "f",
-      Var (TFun TInt TInt) "f"),
-    (TyContext.singleton ("f", TFun TInt TInt), "f 3",
-      App TInt (Var (TFun TInt TInt) "f") (int 3)),
-    (TyContext.singleton ("x", TVar "x0"), "x - 1",
+
+    (TyCtxt.singleton ("f", TFun "" TInt TInt), "f",
+      Var (TFun "" TInt TInt) "f"),
+
+    (TyCtxt.singleton ("f", TFun "" TInt TInt), "f 3",
+      App TInt (Var (TFun "" TInt TInt) "f") (int 3)),
+
+    (TyCtxt.singleton ("x", TVar "x0"), "x - 1",
       OpSub TInt (Var TInt "x") (int 1)),
-    (TyContext.fromListTy [("x", TVar "x0"), ("y", TVar "x1")], "x y",
+
+    (TyCtxt.fromListTy [("x", TVar "x0"), ("y", TVar "x1")], "x y",
       App (TVar "x2")
-        (Var (TFun (TVar "x1") (TVar "x2")) "x")
-        (Var (TVar "x1") "y"))
+        (Var (TFun "x3" (TVar "x1") (TVar "x2")) "x")
+        (Var (TVar "x1") "y")),
+
+    (TyCtxt.empty,
+      "let n = 10 in " ++
+      "let foo = fun g -> g 10 in " ++
+      "foo (fun x -> x + n) + foo (fun x -> x)",
+      Let TInt ("n",TSType TInt) (int 10)
+      (Let TInt ("foo",TSForall "x1"
+        (TSType (TFun "x3" (TFun "x2" TInt (TVar "x1")) (TVar "x1"))))
+        (Abs (TFun "x3" (TFun "x2" TInt (TVar "x1")) (TVar "x1")) "g"
+          (App (TVar "x1")
+            (Var (TFun "x2" TInt (TVar "x1")) "g") (int 10)))
+        (OpAdd TInt
+          (App TInt (Var (TFun "x3" (TFun "x2" TInt TInt) TInt) "foo")
+            (Abs (TFun "x2" TInt TInt) "x"
+              (OpAdd TInt (Var TInt "x") (Var TInt "n"))))
+          (App TInt
+            (Var (TFun "x3" (TFun "x2" TInt TInt) TInt) "foo")
+            (Abs (TFun "x2" TInt TInt) "x" (Var TInt "x"))))))
+  ]
+
+testInference2 :: [(String, TyExpr2)]
+testInference2 =
+  let int = LitInt TInt in
+  let bool = LitBool TBool in [
+    ("fun x -> x",
+      Abs (TFun [AFun] (TVar "x0") (TVar "x0")) "x"
+        (Var (TVar "x0") "x")),
+
+    ("fun x -> fun y -> y",
+      Abs (TFun [AFun] (TVar "x0") (TFun [AFun] (TVar "x1") (TVar "x1"))) "x"
+        (Abs (TFun [AFun] (TVar "x1") (TVar "x1")) "y"
+          (Var (TVar "x1") "y"))),
+
+    ("fun x -> fun y -> x",
+      Abs (TFun [AFun] (TVar "x0") (TFun [AClo] (TVar "x1") (TVar "x0"))) "x"
+        (Abs (TFun [AClo] (TVar "x1") (TVar "x0")) "y"
+          (Var (TVar "x0") "x"))),
+
+    ("let f = fun x -> x + 10 in f 10 ",
+      Let TInt ("f",TSType (TFun [AFun] TInt TInt))
+        (Abs (TFun [AFun] TInt TInt) "x"
+          (OpAdd TInt (Var TInt "x") (LitInt TInt 10)))
+        (App TInt
+          (Var (TFun [AFun] TInt TInt) "f")
+          (LitInt TInt 10))),
+
+    ("let n = 10 in fun x -> x + n",
+      Let (TFun [AClo] TInt TInt) ("n",TSType TInt)
+        (LitInt TInt 10)
+        (Abs (TFun [AClo] TInt TInt) "x"
+          (OpAdd TInt (Var TInt "x") (Var TInt "n")))),
+
+    ("let n = 10 in let f = fun x -> x + n in f 10 ",
+      Let TInt ("n",TSType TInt) (LitInt TInt 10)
+      (Let TInt ("f",TSType (TFun [AClo] TInt TInt))
+        (Abs (TFun [AClo] TInt TInt) "x"
+          (OpAdd TInt (Var TInt "x") (Var TInt "n")))
+        (App TInt (Var (TFun [AClo] TInt TInt) "f") (LitInt TInt 10)))),
+
+    ("fun g -> g 10",
+      Abs (TFun [AFun] (TFun [] TInt (TVar "x1")) (TVar "x1")) "g"
+        (App (TVar "x1") (Var (TFun [] TInt (TVar "x1")) "g") (LitInt TInt 10))),
+
+    ("let n = 10 in " ++
+     "let f = fun x -> x + 10 in " ++
+     "let c = fun x -> x + n in " ++
+     "let foo = fun g -> g 10 in " ++
+     "foo f",
+      Let TInt ("n",TSType TInt) (LitInt TInt 10)
+      (Let TInt ("f",TSType (TFun [AFun] TInt TInt))
+        (Abs (TFun [AFun] TInt TInt) "x"
+          (OpAdd TInt (Var TInt "x") (LitInt TInt 10)))
+      (Let TInt ("c",TSType (TFun [AClo] TInt TInt))
+        (Abs (TFun [AClo] TInt TInt) "x"
+          (OpAdd TInt (Var TInt "x") (Var TInt "n")))
+      (Let TInt ("foo",TSForall "x5" (TSType
+        (TFun [AFun] (TFun [AFun] TInt (TVar "x5")) (TVar "x5"))))
+        (Abs (TFun [AFun] (TFun [AFun] TInt (TVar "x5")) (TVar "x5")) "g"
+          (App (TVar "x5")
+            (Var (TFun [AFun] TInt (TVar "x5")) "g")
+            (LitInt TInt 10)))
+        (App TInt
+          (Var (TFun [AFun] (TFun [AFun] TInt TInt) TInt) "foo")
+          (Var (TFun [AFun] TInt TInt) "f")))))),
+
+    ("let n = 10 in " ++
+     "let f = fun x -> x + 10 in " ++
+     "let c = fun x -> x + n in " ++
+     "let foo = fun g -> g 10 in " ++
+     "foo c",
+      Let TInt ("n",TSType TInt) (LitInt TInt 10)
+      (Let TInt ("f",TSType (TFun [AFun] TInt TInt))
+        (Abs (TFun [AFun] TInt TInt) "x"
+          (OpAdd TInt (Var TInt "x") (LitInt TInt 10)))
+      (Let TInt ("c",TSType (TFun [AClo] TInt TInt))
+        (Abs (TFun [AClo] TInt TInt) "x"
+          (OpAdd TInt (Var TInt "x") (Var TInt "n")))
+      (Let TInt ("foo",TSForall "x5" (TSType
+        (TFun [AFun] (TFun [AClo] TInt (TVar "x5")) (TVar "x5"))))
+        (Abs (TFun [AFun] (TFun [AClo] TInt (TVar "x5")) (TVar "x5")) "g"
+          (App (TVar "x5")
+            (Var (TFun [AClo] TInt (TVar "x5")) "g")
+            (LitInt TInt 10)))
+        (App TInt
+          (Var (TFun [AFun] (TFun [AClo] TInt TInt) TInt) "foo")
+          (Var (TFun [AClo] TInt TInt) "c")))))),
+
+    ("let n = 10 in " ++
+     "let foo = fun g -> g 10 in " ++
+     "foo (fun x -> x + n) + foo (fun x -> x)",
+      Let TInt ("n",TSType TInt) (int 10)
+      (Let TInt ("foo",TSForall "x1"
+        (TSType (TFun [AFun] (TFun [AFun,AClo] TInt (TVar "x1")) (TVar "x1"))))
+        (Abs (TFun [AFun] (TFun [AFun,AClo] TInt (TVar "x1")) (TVar "x1")) "g"
+          (App (TVar "x1")
+            (Var (TFun [AFun,AClo] TInt (TVar "x1")) "g") (int 10)))
+        (OpAdd TInt
+          (App TInt
+            (Var (TFun [AFun] (TFun [AFun,AClo] TInt TInt) TInt) "foo")
+            (Abs (TFun [AFun,AClo] TInt TInt) "x"
+              (OpAdd TInt (Var TInt "x") (Var TInt "n"))))
+          (App TInt
+            (Var (TFun [AFun] (TFun [AFun,AClo] TInt TInt) TInt) "foo")
+            (Abs (TFun [AFun,AClo] TInt TInt) "x" (Var TInt "x")))))),
+
+    ("let n = 10 in " ++
+     "let foo = fun g -> g 10 in " ++
+     "foo (fun x -> x) + foo (fun x -> x + n)",
+      Let TInt ("n",TSType TInt) (int 10)
+      (Let TInt ("foo",TSForall "x1"
+        (TSType (TFun [AFun] (TFun [AFun,AClo] TInt (TVar "x1")) (TVar "x1"))))
+        (Abs (TFun [AFun] (TFun [AFun,AClo] TInt (TVar "x1")) (TVar "x1")) "g"
+          (App (TVar "x1")
+            (Var (TFun [AFun,AClo] TInt (TVar "x1")) "g") (int 10)))
+        (OpAdd TInt
+          (App TInt
+            (Var (TFun [AFun] (TFun [AFun,AClo] TInt TInt) TInt) "foo")
+            (Abs (TFun [AFun,AClo] TInt TInt) "x" (Var TInt "x")))
+          (App TInt
+            (Var (TFun [AFun] (TFun [AFun,AClo] TInt TInt) TInt) "foo")
+            (Abs (TFun [AFun,AClo] TInt TInt) "x"
+              (OpAdd TInt (Var TInt "x") (Var TInt "n"))))))),
+
+    ("let n = 10 in " ++
+     "let f = fun x -> x + 10 in " ++
+     "let g = fun x -> x + n in " ++
+     "let foo = fun g -> g 10 in " ++
+     "(foo f) + (foo g)",
+      Let TInt ("n",TSType TInt) (int 10)
+      (Let TInt ("f",TSType (TFun [AFun,AClo] TInt TInt))
+        (Abs (TFun [AFun,AClo] TInt TInt) "x"
+          (OpAdd TInt (Var TInt "x") (int 10)))
+      (Let TInt ("g",TSType (TFun [AFun,AClo] TInt TInt))
+        (Abs (TFun [AFun, AClo] TInt TInt) "x"
+          (OpAdd TInt (Var TInt "x") (Var TInt "n")))
+      (Let TInt ("foo",TSForall "x5" (TSType
+        (TFun [AFun] (TFun [AFun,AClo] TInt (TVar "x5")) (TVar "x5"))))
+        (Abs (TFun [AFun] (TFun [AFun,AClo] TInt (TVar "x5")) (TVar "x5")) "g"
+          (App (TVar "x5")
+            (Var (TFun [AFun,AClo] TInt (TVar "x5")) "g")
+            (LitInt TInt 10)))
+      (OpAdd TInt
+        (App TInt
+          (Var (TFun [AFun] (TFun [AFun,AClo] TInt TInt) TInt) "foo")
+          (Var (TFun [AFun,AClo] TInt TInt) "f"))
+        (App TInt
+          (Var (TFun [AFun] (TFun [AFun,AClo] TInt TInt) TInt) "foo")
+          (Var (TFun [AFun,AClo] TInt TInt) "g")))))))
   ]
 
 interpretationTests = [
@@ -420,12 +627,12 @@ normalFormTests = [
   ]
 
 fvTests = [
-    (TyContext.empty, "fun x -> x", []),
-    (TyContext.singleton ("y", TInt), "fun x -> y", ["y"]),
-    (TyContext.singleton ("y", TInt), "fun x -> x + y", ["y"]),
-    (TyContext.empty, "let x = 2 + 3 in x", []),
-    (TyContext.empty, "let x = 5 in let f = fun y -> x + y in f 3", []),
-    (TyContext.singleton ("sum", TFun TInt TInt), "fun n -> if n = 0 then 0 else n + sum (n - 1)", ["sum"])
+    (TyCtxt.empty, "fun x -> x", []),
+    (TyCtxt.singleton ("y", TInt), "fun x -> y", ["y"]),
+    (TyCtxt.singleton ("y", TInt), "fun x -> x + y", ["y"]),
+    (TyCtxt.empty, "let x = 2 + 3 in x", []),
+    (TyCtxt.empty, "let x = 5 in let f = fun y -> x + y in f 3", []),
+    (TyCtxt.singleton ("sum", TFun "" TInt TInt), "fun n -> if n = 0 then 0 else n + sum (n - 1)", ["sum"])
   ]
 
 closureTests = [
@@ -505,9 +712,19 @@ testTypeInference (ctxt, prog, expr) =
         show (Expr.getType expr) ++ "'") $
         TestCase $
           case TyInferance.infer ctxt term of
-            Just (subst, expr') ->
+            Right (subst, cs, expr') ->
               assertEqual (show subst) expr expr'
-            Nothing -> assertFailure "did not type checked"
+            Left msg -> assertFailure msg
+
+testTypeInference2 :: (String, TyExpr2) -> Test
+testTypeInference2 (prog, expr) =
+  let term = Parser.parse (Lexer.alexScanTokens prog)
+   in TestLabel ("program '" ++ prog ++ "' has type '" ++
+        show (Expr.getType expr) ++ "'") $
+        TestCase $
+          case TyInferance.infer2 TyCtxt.empty term of
+            Right expr' -> assertEqual "" expr expr'
+            Left msg -> assertFailure msg
 
 testInterpreter :: (String, Value () ()) -> Test
 testInterpreter (prog, val) =
@@ -522,26 +739,26 @@ testNormalForm :: (String, String) -> Test
 testNormalForm (prog, nf) =
   let term = Parser.parse (Lexer.alexScanTokens prog) in
   TestLabel prog $ TestCase $
-    case TyInferance.infer TyContext.empty term of
-      Nothing -> assertFailure "did not type checked"
-      Just (_, expr) -> assertEqual "" nf (show (Compiler.toNormalForm expr))
+    case TyInferance.infer TyCtxt.empty term of
+      Left msg -> assertFailure msg
+      Right (_, _, expr) -> assertEqual "" nf (show (Compiler.toNormalForm expr))
 
 testFreeVariables :: (Context, String, [String]) -> Test
 testFreeVariables (ctxt, prog, fvs) =
   let term = Parser.parse (Lexer.alexScanTokens prog) in
   TestLabel prog $ TestCase $
     case TyInferance.infer ctxt term of
-      Nothing -> assertFailure "did not type checked"
-      Just (_, expr) ->
+      Left msg -> assertFailure msg
+      Right (_, _, expr) ->
         assertEqual "" fvs (map fst (Compiler.fv (Compiler.toNormalForm expr)))
 
 testClosure :: (String, String) -> Test
 testClosure (prog, nfc) =
   let term = Parser.parse (Lexer.alexScanTokens prog) in
   TestLabel prog $ TestCase $
-    case TyInferance.infer TyContext.empty term of
-      Nothing -> assertFailure "did not type checked"
-      Just (_, expr) ->
+    case TyInferance.infer TyCtxt.empty term of
+      Left msg -> assertFailure msg
+      Right (_, _, expr) ->
         let normForm = Compiler.toNormalForm expr in
         let normFormClosure = Compiler.toClosure normForm in
         assertEqual "" nfc (show normFormClosure)
@@ -554,6 +771,8 @@ tests =
       TestList (map testComparaison testEquivalences),
     TestLabel "testing (infer (parse prog))" $
       TestList (map testTypeInference testInference),
+    TestLabel "testing (infer2 (parse prog))" $
+      TestList (map testTypeInference2 testInference2),
     TestLabel "testing (eval [] (parse prog))" $
       TestList (map testInterpreter interpretationTests),
     TestLabel "testing (toNormalForm (parse prog))" $

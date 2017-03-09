@@ -19,16 +19,17 @@ library
   build-tools:         alex, happy
   exposed-modules:     Lexer
                      , Parser
-                     , Type
-                     , TypeContext
-                     , TypeInference
-                     , TypeInference2
-                     , TypeSubstitution
-                     , FreshName
-                     , Interpreter
                      , Compiler
                      , Compiler.Llvm
                      , Expr
+                     , FreeVars
+                     , FreshName
+                     , Interpreter
+                     , Type
+                     , TypeContext
+                     , TypeInference
+                     --, TypeInference2
+                     , TypeSubstitution
   build-depends:       base >= 4.7 && < 5
                      , array
                      , containers

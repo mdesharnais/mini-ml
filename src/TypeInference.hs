@@ -8,6 +8,8 @@ import qualified Expr
 import qualified TypeContext as Context
 import qualified TypeSubstitution as Subst
 
+import Debug.Trace
+
 import Control.Monad.Trans(lift)
 import Data.Bifunctor(bimap)
 import Data.List((\\))
@@ -15,11 +17,9 @@ import Data.Set(Set)
 import Expr(Expr(..))
 import FreeVars
 import FreshName
-import Type(AnVar, TyExpr, Type(..), TypeSchema(..))
+import Type
 import TypeContext(Context)
 import TypeSubstitution(Subst)
-
-data Annotation = AFun | AClo deriving (Eq, Ord, Show)
 
 data SAnn = SASingleton Annotation | SAUnion SAnn SAnn | SAEmpty | SAVar AnVar
   deriving (Eq, Ord)
@@ -46,7 +46,7 @@ occursIn x ty =
     (TVar y) -> x == y
 
 
-unify :: Type -> Type -> Maybe Subst
+unify :: Type -> Type -> Either String Subst
 unify TInt TInt = return Subst.empty
 unify TBool TBool = return Subst.empty
 unify (TFun b t1 t2) (TFun b' t1' t2') = do
@@ -57,10 +57,12 @@ unify (TFun b t1 t2) (TFun b' t1' t2') = do
   s2 <- unify (app s1 (app s0 t2)) (app s1 (app s0 t2'))
   return (s2 `o` s1 `o` s0)
 unify t alpha@(TVar x) =
-  if t == alpha || not (occursIn x t) then
+  if t == alpha then
+    return Subst.empty
+  else if not (occursIn x t) then
     return (Subst.singletonTy (x, t))
   else
-    Nothing
+    Left ("Cannot unify '" ++ show t ++ "' and '" ++ show alpha ++ "'")
 unify alpha@(TVar x) t = unify t alpha
 {-
 unify (TVar x) (TVar y) = Just $
@@ -70,14 +72,15 @@ unify (TVar x) t =
 unify t (TVar x) =
   if List.elem x (freeVars t) then Nothing else Just (Subst.singletonTy (x, t))
 -}
-unify t1 t2 = Nothing
+unify t1 t2 =
+    Left ("Cannot unify '" ++ show t1 ++ "' and '" ++ show t2 ++ "'")
 
-infer :: Context -> Expr () () -> Maybe (Subst, TyExpr)
+infer :: Context -> Expr () () -> Either String (Subst, Set Constraint, TyExpr)
 infer c e = do
   case runNameGenTWithout (Context.extractTypeVars c) (impl c e) of
-    Nothing -> Nothing
-    Just (s, _, expr) ->
-      Just (s, bimap (Subst.applyTySchema s) (Subst.applyTy s) expr)
+    Left msg -> Left msg
+    Right (s, cs, expr) ->
+      Right (s, cs, bimap (Subst.applyTySchema s) (Subst.applyTy s) expr)
   where cat = Subst.comp
         o = Subst.comp
 
@@ -89,7 +92,7 @@ infer c e = do
           -> Context    -- ^ Context in which the expressions are type-checked
           -> Expr () () -- ^ Left hand side expression
           -> Expr () () -- ^ Right hand side expression
-          -> NameGenT Maybe (Subst, Set Constraint, TyExpr)
+          -> NameGenT (Either String) (Subst, Set Constraint, TyExpr)
         checkBinOpElements con t1 t2 t c e1 e2 = do
           (s1, cs1, e1') <- impl c e1
           (s2, cs2, e2') <- impl (Subst.applyContext s1 c) e2
@@ -98,18 +101,21 @@ infer c e = do
           let app = substApplyConstraints
           let cs = Set.union
                 (app s4 (app s3 (app s2 (app s1 cs1))))
-                (app s4 (app s3 cs1))
+                (app s4 (app s3 cs2))
           return (s4 `o` s3 `o` s2 `o` s1, cs, con t e1' e2')
 
         impl :: Context -> Expr () () ->
-          NameGenT Maybe (Subst, Set Constraint, TyExpr)
+          NameGenT (Either String) (Subst, Set Constraint, TyExpr)
         impl c (Var _ x) = do
           let instanciate :: Monad m => Subst -> TypeSchema -> NameGenT m Type
               instanciate s (TSType ty) = return (Subst.applyTy s ty)
               instanciate s (TSForall x tySchema) = do
                 alpha <- genFreshTVar
                 instanciate (Subst.addTy (x, alpha) s) tySchema
-          tySchema <- lift (Context.lookup x c)
+          tySchema <- lift $
+            case Context.lookup x c of
+              Nothing -> Left ("Variable '" ++ x ++ "' not in context")
+              Just tySchema -> Right tySchema
           alpha <- instanciate Subst.empty tySchema
           return (Subst.empty, Set.empty, Var alpha x)
         impl c (ExternVar _ x) = do
@@ -119,7 +125,7 @@ infer c e = do
           alpha <- genFreshTVar
           (s1, cs1, e1') <- impl (Context.addTy (x, alpha) c) e1
           beta <- freshAVar
-          let pi = if List.null (freeVars e1) then AFun else AClo
+          let pi = if List.null (freeVars e1 \\ [x]) then AFun else AClo
           let cs = Set.insert (beta, pi) cs1
           let tau = TFun beta (Subst.applyTy s1 alpha) (Expr.getType e1')
           return (s1, cs, Abs tau x e1')
@@ -133,8 +139,7 @@ infer c e = do
             (TFun beta (Expr.getType e2') alpha)
           let app = substApplyConstraints
           let cs = Set.union (app s3 (app s2 cs1)) (app s3 cs2)
-          -- Check composition ordering
-          return (s1 `o` s2 `o` s3, cs, App (Subst.applyTy s3 alpha) e1' e2')
+          return (s3 `o` s2 `o` s1, cs, App (Subst.applyTy s3 alpha) e1' e2')
         impl c (LitInt  _ n) = return (Subst.empty, Set.empty, LitInt TInt n)
         impl c (LitBool _ b) = return (Subst.empty, Set.empty, LitBool TBool b)
         impl c (OpMul _ e1 e2) = checkBinOpElements OpMul TInt TInt TInt  c e1 e2
@@ -161,7 +166,7 @@ infer c e = do
           let cs1' = s4 `app` (s3 `app` (s2 `app` cs1))
           let cs2' = s4 `app` (s3 `app` cs2)
           let cs = cs0' `Set.union` cs1' `Set.union` cs2'
-          return (s0 `o` s1 `o` s2 `o` s3 `o` s4, cs, If ty e0' e1' e2')
+          return (s4 `o` s3 `o` s2 `o` s1 `o` s0, cs, If ty e0' e1' e2')
         impl c (Let _ (x, _) e1 e2) = do
           (s1, cs1, e1') <- impl c e1
           let e1Ty = Expr.getType e1'
@@ -171,15 +176,29 @@ infer c e = do
           (s2, cs2, e2') <- impl (Context.add (x, e1Ty') c') e2
           let e2Ty = Expr.getType e2'
           let cs = Set.union (substApplyConstraints s2 cs1) cs2
-          return (s2 `o` s1, Set.empty, Let e2Ty (x, e1Ty') e1' e2')
+          return (s2 `o` s1, cs, Let e2Ty (x, e1Ty') e1' e2')
         impl c (LetRec _ (f, _) (y, e1) e2) = do
           alpha <- genFreshTVar
-          (theta1, _, a@(Abs tau1 _ e1')) <-
+          (s1, cs1, a@(Abs tau1 _ e1')) <-
             impl (Context.addTy (f, alpha) c) (Abs () y e1)
-          s <- lift (unify (Subst.applyTy theta1 alpha) tau1)
-          let theta1' = Subst.applyContext theta1 c
-          let fv = freeVars (Subst.applyTy theta1 tau1)
-          let tyVars = fv \\ (Context.extractTypeVars (Subst.applyContext s theta1'))
+          s <- lift (unify (Subst.applyTy s1 alpha) tau1)
+          let appCo = Subst.applyContext
+          let s1' = appCo s1 c
+          let fv = freeVars (Subst.applyTy s1 tau1)
+          let tyVars = fv \\ (Context.extractTypeVars (appCo s s1'))
           let tau1' = List.foldl (flip TSForall) (TSType tau1) tyVars
-          (theta2, _, e2') <- impl (Subst.applyContext s (Context.add (f, tau1') theta1')) e2
-          return (theta1 `cat` s `cat` theta2, Set.empty, LetRec (Expr.getType e2') (f, tau1') (y, e1') e2')
+          (s2, cs2, e2') <- impl (appCo s (Context.add (f, tau1') s1')) e2
+          let e2Ty = Expr.getType e2'
+          let subst = s2 `cat` s `cat` s1
+          let app = substApplyConstraints
+          let cs = Set.union (app s (app s2 cs1)) cs2
+          return (subst, cs, LetRec e2Ty (f, tau1') (y, e1') e2')
+
+infer2 :: Context -> Expr () () -> Either String TyExpr2
+infer2 c expr = do
+  (_, cs, expr') <- infer c expr
+  let f :: Type -> Type2
+      f = fmap (\a -> Set.map snd (Set.filter ((==) a . fst) cs))
+  let g :: TypeSchema -> TypeSchema2
+      g = fmap f
+  return (bimap g f expr')
