@@ -13,29 +13,29 @@ import Type
 -- Intermediate language in normal form
 
 data AtomicExpr =
-  ALitInt    Type Integer |
-  ALitBool   Type Bool |
-  AVar       Type Id |
-  AExternVar Type Id
+  ALitInt    Type2 Integer |
+  ALitBool   Type2 Bool |
+  AVar       Type2 Id |
+  AExternVar Type2 Id
 
 data ComplexExpr =
-  COpAdd Type AtomicExpr AtomicExpr |
-  COpSub Type AtomicExpr AtomicExpr |
-  COpMul Type AtomicExpr AtomicExpr |
-  COpDiv Type AtomicExpr AtomicExpr |
-  COpLT  Type AtomicExpr AtomicExpr |
-  COpEQ  Type AtomicExpr AtomicExpr |
-  CIf    Type AtomicExpr ExprNF ExprNF |
-  CApp   Type AtomicExpr AtomicExpr |
-  CAbs   Type Id ExprNF
+  COpAdd Type2 AtomicExpr AtomicExpr |
+  COpSub Type2 AtomicExpr AtomicExpr |
+  COpMul Type2 AtomicExpr AtomicExpr |
+  COpDiv Type2 AtomicExpr AtomicExpr |
+  COpLT  Type2 AtomicExpr AtomicExpr |
+  COpEQ  Type2 AtomicExpr AtomicExpr |
+  CIf    Type2 AtomicExpr ExprNF ExprNF |
+  CApp   Type2 AtomicExpr AtomicExpr |
+  CAbs   Type2 Id ExprNF
 
 data ExprNF =
-  EVal    Type AtomicExpr |
-  ELet    Type Id ComplexExpr ExprNF |
-  ELetRec Type (Id, TypeSchema) (Id, ExprNF) ExprNF
+  EVal    Type2 AtomicExpr |
+  ELet    Type2 Id ComplexExpr ExprNF |
+  ELetRec Type2 (Id, TypeSchema2) (Id, ExprNF) ExprNF
 
 class Typeable a where
-  getType :: a -> Type
+  getType :: a -> Type2
 
 instance Typeable AtomicExpr where
   getType (ALitInt    ty _) = ty
@@ -78,15 +78,15 @@ instance Show ExprNF where
 
 -- Expression -> normal form
 
-nfBinOp :: TyExpr -> TyExpr -> (Type -> AtomicExpr -> AtomicExpr -> ComplexExpr) ->
-  Type -> (Type -> Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNF) ->
+nfBinOp :: TyExpr2 -> TyExpr2 -> (Type2 -> AtomicExpr -> AtomicExpr -> ComplexExpr) ->
+  Type2 -> (Type2 -> Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNF) ->
   NameGen ExprNF
 nfBinOp e1 e2 op ty s k = nf e1 s (\a -> nf e2 s (\b -> do
   c <- fresh
   d <- k (AVar ty c)
   return (ELet (getType d) c (op ty a b) d)))
 
-nf :: TyExpr -> (Type -> Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNF) ->
+nf :: TyExpr2 -> (Type2 -> Id -> AtomicExpr) -> (AtomicExpr -> NameGen ExprNF) ->
   NameGen ExprNF
 nf (LitInt    ty n) s k = k (ALitInt ty n)
 nf (LitBool   ty b) s k = k (ALitBool ty b)
@@ -126,38 +126,38 @@ nf (App ty e1 e2) s k = nf e1 s (\e1' -> nf e2 s (\e2' -> do
   d <- k (AVar ty a)
   return (ELet (getType d) a (CApp ty e1' e2') d)))
 
-toNormalFormM :: TyExpr -> NameGen ExprNF
+toNormalFormM :: TyExpr2 -> NameGen ExprNF
 toNormalFormM e = nf e AVar (return . EVal (Expr.getType e))
 
-toNormalForm :: TyExpr -> ExprNF
+toNormalForm :: TyExpr2 -> ExprNF
 toNormalForm = runNameGen . toNormalFormM
 
 -- Intermediate language in normal form with closures
 
 data AtomicExprCl =
-  ACLitInt    Type Integer |
-  ACLitBool   Type Bool |
-  ACExternVar Type Id |
-  ACVar       Type Id |
-  ACVarSelf   Type |
-  ACVarEnv    Type Integer
+  ACLitInt    Type2 Integer |
+  ACLitBool   Type2 Bool |
+  ACExternVar Type2 Id |
+  ACVar       Type2 Id |
+  ACVarSelf   Type2 |
+  ACVarEnv    Type2 Integer
 
 type Env = [AtomicExprCl]
 
 data ComplexExprCl =
-  CCOpAdd   Type AtomicExprCl AtomicExprCl |
-  CCOpSub   Type AtomicExprCl AtomicExprCl |
-  CCOpMul   Type AtomicExprCl AtomicExprCl |
-  CCOpDiv   Type AtomicExprCl AtomicExprCl |
-  CCOpLT    Type AtomicExprCl AtomicExprCl |
-  CCOpEQ    Type AtomicExprCl AtomicExprCl |
-  CCIf      Type AtomicExprCl ExprNFCl ExprNFCl |
-  CCApp     Type AtomicExprCl AtomicExprCl |
-  CCClosure Type Id ExprNFCl Env
+  CCOpAdd   Type2 AtomicExprCl AtomicExprCl |
+  CCOpSub   Type2 AtomicExprCl AtomicExprCl |
+  CCOpMul   Type2 AtomicExprCl AtomicExprCl |
+  CCOpDiv   Type2 AtomicExprCl AtomicExprCl |
+  CCOpLT    Type2 AtomicExprCl AtomicExprCl |
+  CCOpEQ    Type2 AtomicExprCl AtomicExprCl |
+  CCIf      Type2 AtomicExprCl ExprNFCl ExprNFCl |
+  CCApp     Type2 AtomicExprCl AtomicExprCl |
+  CCClosure Type2 Id ExprNFCl Env
 
 data ExprNFCl =
-  ECVal Type AtomicExprCl |
-  ECLet Type Id ComplexExprCl ExprNFCl
+  ECVal Type2 AtomicExprCl |
+  ECLet Type2 Id ComplexExprCl ExprNFCl
 
 -- Pretty print
 
@@ -213,10 +213,17 @@ instance PrettyPrint ExprNFCl where
     prefix ++ "let " ++ x ++ " = " ++ prettyPrint prefix e1 ++ " in\n" ++
     prettyPrint prefix e2
 
+atExprGetType (ACLitInt    ty _) = ty
+atExprGetType (ACLitBool   ty _) = ty
+atExprGetType (ACExternVar ty _) = ty
+atExprGetType (ACVar       ty _) = ty
+atExprGetType (ACVarSelf   ty) = ty
+atExprGetType (ACVarEnv    ty _) = ty
+
 -- Normal form -> normal form with closure
 
 class FreeVariables a where
-  fv :: a -> [(Id, Type)]
+  fv :: a -> [(Id, Type2)]
 
 instance FreeVariables AtomicExpr where
   fv (ALitInt    _ _) = []
@@ -244,7 +251,7 @@ instance FreeVariables ExprNF where
       [p | p@(y,_) <- fv e1, y /= f && y /= x]
       [p | p@(y,_) <- fv e2, y /= f]
 
-clAt :: (Type -> Id -> AtomicExprCl) -> AtomicExpr -> AtomicExprCl
+clAt :: (Type2 -> Id -> AtomicExprCl) -> AtomicExpr -> AtomicExprCl
 clAt s (ALitInt    ty n) = ACLitInt    ty n
 clAt s (ALitBool   ty b) = ACLitBool   ty b
 clAt s (AVar       ty  x) = s ty x
@@ -265,7 +272,7 @@ clAbs ty s f (x, e) =
             Just n  -> ACVarEnv (snd (fvs !! n)) (toInteger n)
    in CCClosure ty x (clExpr subst e) env
 
-clCo :: (Type -> Id -> AtomicExprCl) -> ComplexExpr -> ComplexExprCl
+clCo :: (Type2 -> Id -> AtomicExprCl) -> ComplexExpr -> ComplexExprCl
 clCo s (COpAdd ty e1 e2)    = CCOpAdd ty (clAt s e1) (clAt s e2)
 clCo s (COpSub ty e1 e2)    = CCOpSub ty (clAt s e1) (clAt s e2)
 clCo s (COpMul ty e1 e2)    = CCOpMul ty (clAt s e1) (clAt s e2)
@@ -276,7 +283,7 @@ clCo s (CIf    ty e1 e2 e3) = CCIf    ty (clAt s e1) (clExpr s e2) (clExpr s e3)
 clCo s (CApp   ty e1 e2)    = CCApp   ty (clAt s e1) (clAt s e2)
 clCo s (CAbs   ty x e)      = clAbs ty s "" (x, e)
 
-clExpr :: (Type -> Id -> AtomicExprCl) -> ExprNF -> ExprNFCl
+clExpr :: (Type2 -> Id -> AtomicExprCl) -> ExprNF -> ExprNFCl
 clExpr s (EVal    ty a) = ECVal ty (clAt s a)
 clExpr s (ELet    ty x e1 e2) = ECLet ty x (clCo s e1) (clExpr s e2)
 clExpr s (ELetRec ty (f, fTy) (x, e1) e2) =

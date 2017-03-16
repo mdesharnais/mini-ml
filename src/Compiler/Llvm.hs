@@ -3,15 +3,17 @@
 module Compiler.Llvm(compile) where
 
 import qualified Control.Monad.State as State
+import qualified Control.Monad.Trans as MonadTrans
 import qualified Data.Foldable as Foldable
 import qualified Data.List as List
-import qualified Control.Monad.Trans as MonadTrans
+import qualified Data.Set as Set
 
 import Compiler
 import Control.Monad.State(StateT)
 import Data.List.NonEmpty(NonEmpty(..))
 import FreshName
 import Text.Printf(printf)
+import Type
 
 -- Eventually consider to switch to libgc
 
@@ -50,6 +52,7 @@ data Instr =
 data Function = Function {
   funName :: Id,
   funArg :: Id,
+  funType :: Type2,
   funInstrs :: [Instr]
 }
 
@@ -77,10 +80,18 @@ llvmArrayType n = "[" ++ show n ++ " x i64]"
 llvmClosureType n = "{" ++ llvmFunPtrType ++ ", " ++ llvmArrayType n ++ "}"
 
 instance Show Function where
-  show (Function { funName, funArg, funInstrs }) =
-    "define i64 " ++ funName ++ "(i64 %closure, i64 " ++ funArg ++ ") {\n" ++
-      unlines (map show funInstrs) ++
-    "}"
+  show (Function { funName, funArg, funType, funInstrs }) =
+    case funType of
+      (TFun b _ _) ->
+        if Set.member AClo b then
+          "define i64 " ++ funName ++ "(i64 %closure, i64 " ++ funArg ++ ") {\n" ++
+            unlines (map show funInstrs) ++
+          "}"
+        else
+          "define i64 " ++ funName ++ "(i64 " ++ funArg ++ ") {\n" ++
+            unlines (map show funInstrs) ++
+          "}"
+      _ -> undefined
 
 instance Show Value where
   show (VId x) = x
@@ -136,24 +147,29 @@ addInstrs stmts = State.modify (\cs -> cs { csInstrs = csInstrs cs ++ stmts })
 addExternals :: [Id] -> CompilationM ()
 addExternals fs = State.modify (\cs -> cs { csExternVars = List.union fs (csExternVars cs) })
 
-promoteToFunction :: Id -> Id -> Integer -> Value -> CompilationM ()
-promoteToFunction f x envLength result = do
-  alpha <- freshVarName
-  beta <- freshVarName
-  let n = envLength
-  let clTy = llvmClosureType n
-  let clPtrTy = clTy ++ "*"
-  let stmt0 = Inttoptr alpha (VId "%closure") "i64" clPtrTy
-  let stmt1 = Load beta (clPtrTy, VId alpha)
-  let stmt2 = Extractvalue "%self" (VId beta) clTy 0
-  let stmt3 = Extractvalue "%env"  (VId beta) clTy 1
+promoteToFunction :: Id -> Type2 -> Id -> Integer -> Value -> CompilationM ()
+promoteToFunction f fTy@(TFun b _ _) x envLength result = do
+  getInstrs <-
+    if Set.member AClo b then do
+      alpha <- freshVarName
+      beta <- freshVarName
+      let n = envLength
+      let clTy = llvmClosureType n
+      let clPtrTy = clTy ++ "*"
+      let stmt0 = Inttoptr alpha (VId "%closure") "i64" clPtrTy
+      let stmt1 = Load beta (clPtrTy, VId alpha)
+      let stmt2 = Extractvalue "%self" (VId beta) clTy 0
+      let stmt3 = Extractvalue "%env"  (VId beta) clTy 1
+      return (\stmts -> [stmt0, stmt1, stmt2, stmt3] ++ stmts ++ [Ret result])
+    else
+      return (\stmts -> stmts ++ [Ret result])
   State.modify $ \cs ->
-    let stmts = csInstrs cs in
     let newFun = Function {
-          funName = f,
-          funArg = x,
-          funInstrs = [stmt0, stmt1, stmt2, stmt3] ++ stmts ++ [Ret result]
-        } in
+      funName = f,
+      funArg = x,
+      funType = fTy,
+      funInstrs = getInstrs (csInstrs cs)
+    } in
     cs {
       csFuns = newFun : csFuns cs,
       csInstrs = [],
@@ -242,34 +258,40 @@ compileCo (CCIf    _ b e1 e2) s = do
   let stmt7 = Phi beta [(e1Label, e1'), (e2Label, e2')]
   addInstrs [stmt5, stmt6, stmt7]
   return (VId beta)
-compileCo (CCClosure _ x e env) s = do
+compileCo (CCClosure fTy@(TFun b _ _) x e env) s = do
+  let isClosure = Set.member AClo b
   let envSize = toInteger (length env)
   alpha <- freshFunctionName
   (e', cs) <- MonadTrans.lift (State.runStateT (do
       beta <- freshVarName
       e' <- compileExpr e (\y -> if y == x then VId beta else s y)
-      promoteToFunction alpha beta envSize e')
+      promoteToFunction alpha fTy beta envSize e')
         (emptyCompState { csEnvSize = envSize }))
   addFunctions (csFuns cs)
   addExternals (csExternVars cs)
-  let closureTy = llvmClosureType envSize
-  let closurePtrTy = closureTy ++ "*"
-  aaa <- freshVarName
-  let stmt0 = Insertvalue aaa
-        (VUndef, closureTy) (VId alpha, llvmFunPtrType) (0 :| [])
-  (_, ccc, stmts) <- Foldable.foldlM (\(n, id, stmts) var -> do
-    var' <- compileAt var s
-    bbb <- freshVarName
-    let stmt = Insertvalue bbb (id, closureTy) (var', "i64") (1 :| [n])
-    return (n + 1, VId bbb, stmt : stmts)) (0, VId aaa, []) env
-  gamma <- freshVarName
-  delta <- freshVarName
-  epsilon <- freshVarName
-  let stmt1 = Malloc gamma (8 + 8 * envSize)
-  let stmt2 = Bitcast delta (VId gamma) "i8*" closurePtrTy
-  let stmt3 = Store (closureTy, ccc) (closurePtrTy, VId delta)
-  let stmt4 = Ptrtoint epsilon (VId delta) closurePtrTy "i64"
-  addInstrs (stmt0 : reverse stmts ++ [stmt1, stmt2, stmt3, stmt4])
+  (epsilon, instrs) <-
+    if isClosure then do
+      let closureTy = llvmClosureType envSize
+      let closurePtrTy = closureTy ++ "*"
+      aaa <- freshVarName
+      let stmt0 = Insertvalue aaa
+            (VUndef, closureTy) (VId alpha, llvmFunPtrType) (0 :| [])
+      (_, ccc, stmts) <- Foldable.foldlM (\(n, id, stmts) var -> do
+        var' <- compileAt var s
+        bbb <- freshVarName
+        let stmt = Insertvalue bbb (id, closureTy) (var', "i64") (1 :| [n])
+        return (n + 1, VId bbb, stmt : stmts)) (0, VId aaa, []) env
+      gamma <- freshVarName
+      delta <- freshVarName
+      epsilon <- freshVarName
+      let stmt1 = Malloc gamma (8 + 8 * envSize)
+      let stmt2 = Bitcast delta (VId gamma) "i8*" closurePtrTy
+      let stmt3 = Store (closureTy, ccc) (closurePtrTy, VId delta)
+      let stmt4 = Ptrtoint epsilon (VId delta) closurePtrTy "i64"
+      return (epsilon, stmt0 : reverse stmts ++ [stmt1, stmt2, stmt3, stmt4])
+    else
+      return (alpha, [])
+  addInstrs instrs
   return (VId epsilon)
 compileCo (CCApp _ (ACExternVar _ f) e) s = do
   alpha <- freshVarName
@@ -285,21 +307,28 @@ compileCo (CCApp _ (ACVarSelf _) e2) s = do
   addInstrs [stmt]
   return (VId alpha)
 compileCo (CCApp _ e1 e2) s = do
-  alpha <- freshVarName
-  beta <- freshVarName
-  gamma <- freshVarName
-  delta <- freshVarName
-  let clTy = llvmClosureType 0
-  let clPtrTy = clTy ++ "*"
   e1' <- compileAt e1 s
   e2' <- compileAt e2 s
-  let stmt0 = Inttoptr alpha e1' "i64" clPtrTy
-  let stmt1 = Load beta (clPtrTy, VId alpha)
-  let stmt2 = Extractvalue gamma (VId beta) clTy 0
-  let stmt3 = Call delta (VId gamma) [e1', e2']
-  addInstrs [stmt0, stmt1, stmt2, stmt3]
-  return (VId delta)
-
+  case atExprGetType e1 of
+    (TFun b _ _) ->
+      if Set.member AClo b then do
+        alpha <- freshVarName
+        beta <- freshVarName
+        gamma <- freshVarName
+        delta <- freshVarName
+        let clTy = llvmClosureType 0
+        let clPtrTy = clTy ++ "*"
+        let stmt0 = Inttoptr alpha e1' "i64" clPtrTy
+        let stmt1 = Load beta (clPtrTy, VId alpha)
+        let stmt2 = Extractvalue gamma (VId beta) clTy 0
+        let stmt3 = Call delta (VId gamma) [e1', e2']
+        addInstrs [stmt0, stmt1, stmt2, stmt3]
+        return (VId delta)
+      else do
+        delta <- freshVarName
+        addInstrs [Call delta e1' [e2']]
+        return (VId delta)
+    _ -> undefined
 compileExpr :: ExprNFCl -> (Id -> Value) -> CompilationM Value
 compileExpr (ECVal _ x) s = compileAt x s
 compileExpr (ECLet _ x e1 e2) s = do
