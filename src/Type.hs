@@ -17,7 +17,7 @@ data BaseType a =
   TInt |
   TFun a (BaseType a) (BaseType a) |
   TVar TyVar
-  deriving (Eq, Functor, Show)
+  deriving (Eq, Functor)
 
 type Type = BaseType AnVar
 
@@ -30,7 +30,7 @@ type Type2 = BaseType (Set Annotation)
 data BaseTypeSchema ty =
   TSType ty |
   TSForall TyVar (BaseTypeSchema ty)
-  deriving (Eq, Functor, Show)
+  deriving (Eq, Functor)
 
 type TypeSchema = BaseTypeSchema Type
 type TypeSchema2 = BaseTypeSchema Type2
@@ -40,19 +40,16 @@ type TyExpr2 = Expr TypeSchema2 Type2
 
 -- Type classes instances
 
-{-
-instance Show Type where
+instance Show a => Show (BaseType a) where
   show TBool = "bool"
   show TInt = "int"
-  show (TFun b t1 t2) = "(" ++ show t1 ++ " ->{" ++ b ++ "} " ++ show t2 ++ ")"
+  show (TFun b t1 t2) =
+    "(" ++ show t1 ++ " ->{" ++ show b ++ "} " ++ show t2 ++ ")"
   show (TVar x) = x
-  -}
 
-{-
-instance Show TypeSchema where
+instance Show a => Show (BaseTypeSchema a) where
   show (TSType t) = show t
   show (TSForall x t) = "forall " ++ x ++ ". " ++ show t
--}
 
 instance FreeVars (BaseType a) where
   freeVars TBool = []

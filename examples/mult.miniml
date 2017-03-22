@@ -1,0 +1,2 @@
+let rec mult = fun x -> fun y -> if y < 1 then 0 else x + mult x (y - 1) in
+extern print (mult 3 5)

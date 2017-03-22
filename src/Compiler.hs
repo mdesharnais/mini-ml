@@ -68,8 +68,8 @@ instance Show AtomicExpr where
   show (ALitInt    _ n) = show n
   show (ALitBool   _ True) = "true"
   show (ALitBool   _ False) = "false"
-  --show (AVar       _ x) = x
-  show (AVar       ty x) = "(" ++ x ++ " : " ++ show ty ++ ")"
+  show (AVar       _ x) = x
+  --show (AVar       ty x) = "(" ++ x ++ " : " ++ show ty ++ ")"
   show (AExternVar _ f) = f
 
 instance Show ComplexExpr where
@@ -88,9 +88,11 @@ instance Show ComplexExpr where
 instance Show ExprNF where
   show (EVal    _ x) = show x
   show (ELet    _ f abs@(CAbsRec ty _ _ _) e2) =
-    "let rec " ++ f ++ " : " ++ show ty ++ " = " ++ show abs ++ " in\n" ++ show e2
+    "let rec " ++ f ++ " = " ++ show abs ++ " in\n" ++ show e2
+    --"let rec " ++ f ++ " : " ++ show ty ++ " = " ++ show abs ++ " in\n" ++ show e2
   show (ELet    _ x e1 e2) =
-    "let " ++ x ++ " : " ++ show (getType e1) ++ " = " ++ show e1 ++ " in\n" ++ show e2
+    "let " ++ x ++ " = " ++ show e1 ++ " in\n" ++ show e2
+    --"let " ++ x ++ " : " ++ show (getType e1) ++ " = " ++ show e1 ++ " in\n" ++ show e2
 
 -- Expression -> normal form
 
@@ -173,15 +175,28 @@ data ExprNFCl =
   ECVal Type2 AtomicExprCl |
   ECLet Type2 Id ComplexExprCl ExprNFCl
 
+instance Typeable ComplexExprCl where
+  getType (CCOpAdd   ty _ _) = ty
+  getType (CCOpSub   ty _ _) = ty
+  getType (CCOpMul   ty _ _) = ty
+  getType (CCOpDiv   ty _ _) = ty
+  getType (CCOpLT    ty _ _) = ty
+  getType (CCOpEQ    ty _ _) = ty
+  getType (CCIf      ty _ _ _) = ty
+  getType (CCApp     ty _ _) = ty
+  getType (CCClosure ty _ _ _) = ty
+
 -- Pretty print
 
 instance Show AtomicExprCl where
   show (ACLitInt    _ n) = show n
   show (ACLitBool   _ b) = show b
   show (ACExternVar _ f) = "extern " ++ f
-  show (ACVar       ty x) = "(" ++ x ++ " : " ++ show ty ++ ")"
+  show (ACVar       _ x) = x
+  --show (ACVar       ty x) = "(" ++ x ++ " : " ++ show ty ++ ")"
   show (ACVarSelf   _ _) = "env.self"
   show (ACVarEnv    _ n) = "env." ++ show n
+  --show (ACVarEnv    ty n) = "(env." ++ show n ++ " : " ++ show ty ++ ")"
 
 instance Show ComplexExprCl where
   show (CCOpAdd   _ e1 e2) = show e1 ++ " + " ++ show e2
@@ -199,7 +214,8 @@ instance Show ComplexExprCl where
 instance Show ExprNFCl where
   show (ECVal _ x) = show x
   show (ECLet ty x e1 e2) =
-    "let " ++ x ++ " : " ++ show ty ++ " = " ++ show e1 ++ " in\n" ++ show e2
+    "let " ++ x ++ " = " ++ show e1 ++ " in\n" ++ show e2
+    --"let " ++ x ++ " : " ++ show (getType e1) ++ " = " ++ show e1 ++ " in\n" ++ show e2
 
 class PrettyPrint a where
   prettyPrint :: String -> a -> String
@@ -293,7 +309,7 @@ clCo s (COpEQ   ty e1 e2)    = CCOpEQ  ty (clAt s e1) (clAt s e2)
 clCo s (CIf     ty e1 e2 e3) = CCIf    ty (clAt s e1) (clExpr s e2) (clExpr s e3)
 clCo s (CApp    ty e1 e2)    = CCApp   ty (clAt s e1) (clAt s e2)
 clCo s (CAbs    ty x e)      = clAbs ty s "" (x, e)
-clCo s (CAbsRec ty f x e)      = clAbs ty s f (x, e)
+clCo s (CAbsRec ty f x e)    = clAbs ty s f (x, e)
 
 clExpr :: (Type2 -> Id -> AtomicExprCl) -> ExprNF -> ExprNFCl
 clExpr s (EVal    ty a) = ECVal ty (clAt s a)

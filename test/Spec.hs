@@ -149,6 +149,23 @@ testInference =
                 (OpSub TInt (Var TInt "n") (int 1))))))
         (App TInt (Var (TFun "x2" TInt TInt) "sum") (int 3))),
 
+    (TyCtxt.empty, "let rec mult = fun x -> fun y -> if y < 1 then 0 else mult x (y - 1) in mult 3 5",
+      Let TInt ("mult", TSType (TFun "" TInt (TFun "" TInt TInt)))
+        (AbsRec (TFun "" TInt (TFun "" TInt TInt)) "mult" "x"
+          (Abs (TFun "" TInt TInt) "y"
+            (If TInt (OpLT TBool (Var TInt "y") (int 1))
+              (int 0)
+              (App TInt
+                (App (TFun "" TInt TInt)
+                  (Var (TFun "" TInt (TFun "" TInt TInt)) "mult")
+                  (Var TInt "x"))
+                (OpSub TInt (Var TInt "y") (int 1))))))
+        (App TInt
+          (App (TFun "" TInt TInt)
+            (Var (TFun "" TInt (TFun "" TInt TInt)) "mult")
+            (int 3))
+          (int 5))),
+
     (TyCtxt.empty, "let f = fun x -> fun y -> if true then x else y in f 2 3",
       Let TInt ("f", TSForall "x0"
         (TSType (TFun "x3" (TVar "x0") (TFun "x2" (TVar "x0") (TVar "x0")))))

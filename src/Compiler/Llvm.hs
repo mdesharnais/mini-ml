@@ -89,7 +89,7 @@ typeToLlvm (TFun b t1 t2) =
   if Set.member AClo b then
     "i64"
   else
-    typeToLlvm t2 ++ "(" ++ typeToLlvm t1 ++ ") *"
+    typeToLlvm t2 ++ "(" ++ typeToLlvm t1 ++ ")*"
 typeToLlvm (TVar _) = undefined
 
 instance Show Function where
@@ -127,8 +127,7 @@ instance Show Instr where
     printf "  %s = call %s %s(%s)" x ty (show f)
       (List.intercalate ", " (map (\(x, xTy) -> xTy ++ " " ++ show x) args))
   show (Cast x e) = printf "  %s = zext i1 %s to i64" x (show e)
-  show (Phi x ys) = "  " ++ x ++ " = phi i64 " ++
-    concat (List.intersperse ", "
+  show (Phi x ys) = "  " ++ x ++ " = phi i64 " ++ concat (List.intersperse ", "
       (map (\(y, z) -> "[" ++ show z ++ ", %" ++ y ++ "]") ys))
   show (Br lbl) = "  br label %" ++ lbl
   show (Cbr x thenLabel elseLabel) =
@@ -226,12 +225,24 @@ compileAt (ACVarSelf (TFun b _ _) f) s =
     return (VId "%closure")
   else
     return (VId ("@" ++ f))
-compileAt (ACVarEnv _ n) s = do
+compileAt (ACVarEnv ty n) s = do
   alpha <- freshVarName
   envSize <- State.gets csEnvSize
-  let stmt = Extractvalue alpha (VId "%env") (llvmArrayType envSize) n
-  addInstrs [stmt]
-  return (VId alpha)
+  addInstrs [Extractvalue alpha (VId "%env") (llvmArrayType envSize) n]
+  case ty of
+    TBool -> do
+      beta <- freshVarName
+      addInstrs [CmpEQ beta (VInt 1) (VId alpha)]
+      return (VId beta)
+    TInt -> return (VId alpha)
+    fTy@(TFun b t1 t2) ->
+      if Set.member AClo b then
+        return (VId alpha)
+      else do
+        beta <- freshVarName
+        addInstrs [Inttoptr beta (VId alpha) "i64" (typeToLlvm fTy)]
+        return (VId beta)
+    (TVar _) -> undefined
 
 compileOp c e1 e2 s = do
   e1' <- compileAt e1 s
@@ -241,7 +252,7 @@ compileOp c e1 e2 s = do
   addInstrs [stmt]
   return (VId alpha)
 
-addCast x = do
+addCastBoolToInt64 x = do
   alpha <- freshVarName
   let stmt = Cast alpha x
   addInstrs [stmt]
@@ -252,8 +263,8 @@ compileCo (CCOpAdd _ e1 e2) s = compileOp Add   e1 e2 s
 compileCo (CCOpSub _ e1 e2) s = compileOp Sub   e1 e2 s
 compileCo (CCOpMul _ e1 e2) s = compileOp Mul   e1 e2 s
 compileCo (CCOpDiv _ e1 e2) s = compileOp Div   e1 e2 s
-compileCo (CCOpLT  _ e1 e2) s = compileOp CmpLT e1 e2 s -- >>= addCast
-compileCo (CCOpEQ  _ e1 e2) s = compileOp CmpEQ e1 e2 s -- >>= addCast
+compileCo (CCOpLT  _ e1 e2) s = compileOp CmpLT e1 e2 s
+compileCo (CCOpEQ  _ e1 e2) s = compileOp CmpEQ e1 e2 s
 compileCo (CCIf    _ b e1 e2) s = do
   b' <- compileAt b s
   --alpha <- freshVarName
@@ -299,9 +310,22 @@ compileCo (CCClosure fTy@(TFun b _ _) x e env) s = do
             (VUndef, closureTy) (VId alpha, llvmFunPtrType) (0 :| [])
       (_, ccc, stmts) <- Foldable.foldlM (\(n, id, stmts) var -> do
         var' <- compileAt var s
+        (var'', instrs) <-
+          case atExprGetType var of
+            TBool -> do
+              alpha <- freshVarName
+              return (VId alpha, [Cast alpha var'])
+            TInt -> return (var', [])
+            fTy@(TFun b _ _) ->
+              if Set.member AClo b then
+                return (var', [])
+              else do
+                alpha <- freshVarName
+                return (VId alpha, [Ptrtoint alpha var' (typeToLlvm fTy) "i64"])
+            (TVar _) -> undefined
         bbb <- freshVarName
-        let stmt = Insertvalue bbb (id, closureTy) (var', "i64") (1 :| [n])
-        return (n + 1, VId bbb, stmt : stmts)) (0, VId aaa, []) env
+        let stmt = Insertvalue bbb (id, closureTy) (var'', "i64") (1 :| [n])
+        return (n + 1, VId bbb, instrs ++ (stmt : stmts))) (0, VId aaa, []) env
       gamma <- freshVarName
       delta <- freshVarName
       epsilon <- freshVarName

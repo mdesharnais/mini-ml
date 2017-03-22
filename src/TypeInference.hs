@@ -8,8 +8,6 @@ import qualified Expr
 import qualified TypeContext as Context
 import qualified TypeSubstitution as Subst
 
-import Debug.Trace
-
 import Control.Monad.Trans(lift)
 import Data.Bifunctor(bimap)
 import Data.List((\\))
@@ -122,7 +120,9 @@ infer c e = do
           return (Subst.empty, Set.empty, Var alpha x)
         impl c (ExternVar _ x) = do
           beta <- freshAVar
-          return (Subst.empty, Set.empty, ExternVar (TFun beta TInt TInt) x)
+          let cs = Set.singleton (beta, AFun)
+          let ty = TFun beta TInt TInt
+          return (Subst.empty, cs, ExternVar ty x)
         impl c (Abs _ x e1) = do
           alpha <- genFreshTVar
           (s1, cs1, e1') <- impl (Context.addTy (x, alpha) c) e1

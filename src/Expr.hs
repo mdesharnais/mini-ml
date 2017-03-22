@@ -76,10 +76,9 @@ instance (Show tySch, Show ty) => Show (Expr tySch ty) where
   show (If _ e1 e2 e3) =
     "if " ++ show e1 ++ " then " ++ show e2 ++ " else " ++ show e3
   show (Let _ (x, ty) e1 e2) =
-    "let " ++ x ++ " : " ++ show ty ++ " = " ++
-    show e1 ++ " in " ++ show e2
-    "fun " ++ x ++ " -> " ++ show e1 ++ " in " ++ show e2
+    "let " ++ x ++ " : " ++ show ty ++ " = " ++ show e1 ++ " in\n " ++ show e2
   show (Abs _ x e1) = "(fun " ++ x ++ " -> " ++ show e1 ++ ")"
+  show (AbsRec _ f x e1) = "(funrec " ++ f ++ " " ++ x ++ " -> " ++ show e1 ++ ")"
   show (App ty e1 e2) =
     "(" ++ show e1 ++ " " ++ show e2 ++ " : " ++ show ty ++ ")"
 -}
@@ -96,9 +95,9 @@ instance FreeVars (Expr a b) where
   freeVars (OpLT  _ e1 e2)      = List.union (freeVars e1) (freeVars e2)
   freeVars (OpEQ  _ e1 e2)      = List.union (freeVars e1) (freeVars e2)
   freeVars (If _ e1 e2 e3)      =
-    let u = List.union in (freeVars e1) `u` (freeVars e2) `u` (freeVars e2)
+    let u = List.union in (freeVars e1) `u` (freeVars e2) `u` (freeVars e3)
   freeVars (Let _ (x, _) e1 e2) =
     List.union (freeVars e1) [a | a <- freeVars e2, a /= x]
   freeVars (Abs _ x e1)         = [a | a <- freeVars e1, a /= x]
-  freeVars (AbsRec _ self x e1)    = [a | a <- freeVars e1, a /= x && a /= self]
+  freeVars (AbsRec _ self x e1) = [a | a <- freeVars e1, a /= x && a /= self]
   freeVars (App _ e1 e2)        = List.union (freeVars e1) (freeVars e2)
