@@ -21,6 +21,8 @@ import Type
 import TypeContext(Context)
 import TypeSubstitution(Subst)
 
+import Debug.Trace(traceShowId)
+
 data SAnn = SASingleton Annotation | SAUnion SAnn SAnn | SAEmpty | SAVar AnVar
   deriving (Eq, Ord)
 

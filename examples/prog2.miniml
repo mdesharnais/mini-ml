@@ -1,1 +1,0 @@
-let rec fix = fun f -> f (fun y -> fix f y) in fix

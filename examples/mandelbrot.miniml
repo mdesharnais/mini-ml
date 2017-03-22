@@ -1,0 +1,64 @@
+let z0r = 0 - 600 in
+let dummy = extern printheader 0 in
+let printdot = fun n ->
+  let print = extern print in
+  let h = 6*n*1024/60 in
+  let i = 6*n/60 in
+  let t = h - i*1024 in
+  let q = 1024 - t in
+  if (59 < n) then
+    let u = print 0 in
+    let u = print 0 in
+    print 0
+  else if (i < 1) then
+    let u = print 60 in
+    let u = print (60*t/1024) in
+    print 0
+  else if (i < 2) then
+    let u = print (60*q/1024) in
+    let u = print 60 in
+    print 0
+  else if (i < 3) then
+    let u = print 0 in
+    let u = print 60 in
+    print (60*t/1024)
+  else if (i < 4) then
+    let u = print 60 in
+    let u = print (60*q/1024) in
+    print 60
+  else if (i < 5) then
+    let u = print (60*t/1024) in
+    let u = print 0 in
+    print 60
+  else
+    let u = print 60 in
+    let u = print 0 in
+    print (60*q/1024) in
+let rec yloop = fun y ->
+  if y < 400 then
+    let ci = (y - 200) * 7 in
+    let rec xloop = fun x ->
+      if x < 400 then
+        let cr = z0r + (x - 200) * 7 in
+        let rec loop = fun zr -> fun zi -> fun n ->
+          let absz = zr * zr + zi * zi in
+          if absz < 4194304 then
+            (if n < 60 then
+              let t = zr in
+              let zra = ((zr*zr)/1024) - ((zi*zi)/1024) + cr in
+              let zia = 2 * (t * zi)/1024 + ci in
+              let na = n + 1 in
+              loop zra zia na
+            else n)
+          else n in
+        let n = loop 0 0 0 in
+        let p = printdot n in
+        xloop (x+1)
+      else
+        42 in
+    let u = xloop 0 in
+    yloop (y+1)
+  else
+   42 in
+yloop 0
+

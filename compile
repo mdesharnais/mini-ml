@@ -1,17 +1,31 @@
 #!/bin/sh
-set -eu
+set -u
 
 stack build
 
+run_prog () {
+  stack exec mini-ml-exe < "$1" | llc-3.5 -filetype=obj -O3 -o prog.o
+  clang -o prog src/libutil.c prog.o -lgc
+  rm -f prog.o
+  ./prog
+}
+
 case $1 in
   run)
-    echo "$2" | stack exec mini-ml-exe | llc-3.5 -filetype=obj -O3 -o prog.o
-    clang -o prog src/libutil.c prog.o -lgc
-    rm prog.o
-    ./prog
+    run_prog "$2"
     ;;
   show)
-    echo "$2" | stack exec mini-ml-exe
+    stack exec mini-ml-exe < "$2"
+    ;;
+  examples)
+    for prog in $(ls examples); do
+      FILENAME="examples/$prog"
+      echo "Running $FILENAME"
+      OUT=$(run_prog $FILENAME)
+      if [ $? -ne 0 ]; then
+        echo $OUT
+      fi
+    done
     ;;
 esac
 

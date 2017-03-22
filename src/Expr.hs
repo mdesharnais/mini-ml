@@ -88,7 +88,7 @@ instance FreeVars (Expr a b) where
   freeVars (LitInt _ n)         = []
   freeVars (LitBool _ b)        = []
   freeVars (Var ty x)           = [x]
-  freeVars (ExternVar _ x)      = [x]
+  freeVars (ExternVar _ x)      = []
   freeVars (OpAdd _ e1 e2)      = List.union (freeVars e1) (freeVars e2)
   freeVars (OpSub _ e1 e2)      = List.union (freeVars e1) (freeVars e2)
   freeVars (OpMul _ e1 e2)      = List.union (freeVars e1) (freeVars e2)

@@ -1,0 +1,2 @@
+let f = fun n -> n < 10 in
+extern print (if f 5 then 1 else 0)

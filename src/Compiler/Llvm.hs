@@ -15,6 +15,8 @@ import FreshName
 import Text.Printf(printf)
 import Type
 
+import Debug.Trace(traceShowId)
+
 -- Eventually consider to switch to libgc
 
 type Id = String
@@ -25,6 +27,7 @@ data Value = VId Id | VInt Integer | VUndef
 type SrcType = String
 type DstType = String
 type ValType = String
+type VarType = String
 
 data Instr =
   Add   Id Value Value |
@@ -33,12 +36,12 @@ data Instr =
   Div   Id Value Value |
   CmpLT Id Value Value |
   CmpEQ Id Value Value |
-  Call  Id Value [Value] |
+  Call  Id VarType Value [(Value, ValType)] |
   Cast  Id Value |
   Phi   Id [(Label, Value)] |
   Br    Label |
   Cbr   Value Label Label |
-  Ret   Value |
+  Ret   Value ValType |
   Lbl   Label |
   Malloc Id Integer |
   Bitcast Id Value SrcType DstType |
@@ -79,16 +82,29 @@ llvmFunPtrType = "i64 (i64, i64)*"
 llvmArrayType n = "[" ++ show n ++ " x i64]"
 llvmClosureType n = "{" ++ llvmFunPtrType ++ ", " ++ llvmArrayType n ++ "}"
 
+typeToLlvm :: Type2 -> String
+typeToLlvm TBool = "i1"
+typeToLlvm TInt = "i64"
+typeToLlvm (TFun b t1 t2) =
+  if Set.member AClo b then
+    "i64"
+  else
+    typeToLlvm t2 ++ "(" ++ typeToLlvm t1 ++ ") *"
+typeToLlvm (TVar _) = undefined
+
 instance Show Function where
   show (Function { funName, funArg, funType, funInstrs }) =
     case funType of
-      (TFun b _ _) ->
+      (TFun b t1 t2) ->
         if Set.member AClo b then
-          "define i64 " ++ funName ++ "(i64 %closure, i64 " ++ funArg ++ ") {\n" ++
+          "define " ++ typeToLlvm t2 ++ " " ++ funName ++
+          "(i64 %closure, " ++ typeToLlvm t1 ++ " " ++ funArg ++ ") {\n" ++
             unlines (map show funInstrs) ++
           "}"
         else
-          "define i64 " ++ funName ++ "(i64 " ++ funArg ++ ") {\n" ++
+          "define " ++ typeToLlvm t2 ++ " " ++ funName ++ "(" ++
+            typeToLlvm t1 ++ " " ++ funArg ++
+          ") {\n" ++
             unlines (map show funInstrs) ++
           "}"
       _ -> undefined
@@ -107,9 +123,9 @@ instance Show Instr where
     printf "  %s = icmp slt i64 %s, %s" x (show e1) (show e2)
   show (CmpEQ x e1 e2) =
     printf "  %s = icmp eq i64 %s, %s" x (show e1) (show e2)
-  show (Call x f args) =
-    printf "  %s = call i64 %s(%s)" x (show f)
-      (List.intercalate ", " (map (("i64 " ++) . show) args))
+  show (Call x ty f args) =
+    printf "  %s = call %s %s(%s)" x ty (show f)
+      (List.intercalate ", " (map (\(x, xTy) -> xTy ++ " " ++ show x) args))
   show (Cast x e) = printf "  %s = zext i1 %s to i64" x (show e)
   show (Phi x ys) = "  " ++ x ++ " = phi i64 " ++
     concat (List.intersperse ", "
@@ -117,7 +133,7 @@ instance Show Instr where
   show (Br lbl) = "  br label %" ++ lbl
   show (Cbr x thenLabel elseLabel) =
     printf "  br i1 %s, label %%%s, label %%%s" (show x) thenLabel elseLabel
-  show (Ret e) = "  ret i64 " ++ show e
+  show (Ret e ty) = "  ret " ++ ty ++ " " ++ show e
   show (Lbl x) = x ++ ":"
   show (Malloc x n) =
     --printf "  %s = call i8* @GC_malloc(i64 %d)" x n
@@ -148,7 +164,8 @@ addExternals :: [Id] -> CompilationM ()
 addExternals fs = State.modify (\cs -> cs { csExternVars = List.union fs (csExternVars cs) })
 
 promoteToFunction :: Id -> Type2 -> Id -> Integer -> Value -> CompilationM ()
-promoteToFunction f fTy@(TFun b _ _) x envLength result = do
+promoteToFunction f fTy@(TFun b _ t2) x envLength result = do
+  let stmtRet = Ret result (typeToLlvm t2)
   getInstrs <-
     if Set.member AClo b then do
       alpha <- freshVarName
@@ -160,9 +177,9 @@ promoteToFunction f fTy@(TFun b _ _) x envLength result = do
       let stmt1 = Load beta (clPtrTy, VId alpha)
       let stmt2 = Extractvalue "%self" (VId beta) clTy 0
       let stmt3 = Extractvalue "%env"  (VId beta) clTy 1
-      return (\stmts -> [stmt0, stmt1, stmt2, stmt3] ++ stmts ++ [Ret result])
+      return (\stmts -> [stmt0, stmt1, stmt2, stmt3] ++ stmts ++ [stmtRet])
     else
-      return (\stmts -> stmts ++ [Ret result])
+      return (\stmts -> stmts ++ [stmtRet])
   State.modify $ \cs ->
     let newFun = Function {
       funName = f,
@@ -204,7 +221,11 @@ compileAt (ACExternVar _ x) s = do
   addExternals [x]
   return (VId ("@" ++ x))
 compileAt (ACVar _ x) s = return (s x)
-compileAt (ACVarSelf _) s = return (VId "%closure")
+compileAt (ACVarSelf (TFun b _ _) f) s =
+  if Set.member AClo b then
+    return (VId "%closure")
+  else
+    return (VId ("@" ++ f))
 compileAt (ACVarEnv _ n) s = do
   alpha <- freshVarName
   envSize <- State.gets csEnvSize
@@ -231,18 +252,18 @@ compileCo (CCOpAdd _ e1 e2) s = compileOp Add   e1 e2 s
 compileCo (CCOpSub _ e1 e2) s = compileOp Sub   e1 e2 s
 compileCo (CCOpMul _ e1 e2) s = compileOp Mul   e1 e2 s
 compileCo (CCOpDiv _ e1 e2) s = compileOp Div   e1 e2 s
-compileCo (CCOpLT  _ e1 e2) s = compileOp CmpLT e1 e2 s >>= addCast
-compileCo (CCOpEQ  _ e1 e2) s = compileOp CmpEQ e1 e2 s >>= addCast
+compileCo (CCOpLT  _ e1 e2) s = compileOp CmpLT e1 e2 s -- >>= addCast
+compileCo (CCOpEQ  _ e1 e2) s = compileOp CmpEQ e1 e2 s -- >>= addCast
 compileCo (CCIf    _ b e1 e2) s = do
   b' <- compileAt b s
-  alpha <- freshVarName
-  let stmt0 = CmpEQ alpha (VInt 1) b'
+  --alpha <- freshVarName
+  --let stmt0 = CmpEQ alpha (VInt 1) b'
   label <- freshLabelName
   let thenLabel = label ++ "_then"
   let elseLabel = label ++ "_else"
-  let stmt1 = Cbr (VId alpha) thenLabel elseLabel
+  let stmt1 = Cbr b' thenLabel elseLabel
   let stmt2 = Lbl thenLabel
-  addInstrs [stmt0, stmt1, stmt2]
+  addInstrs [{-stmt0,-} stmt1, stmt2]
   e1' <- compileExpr e1 s
   e1LabelOpt <- getCurrentLabel
   let e1Label = maybe thenLabel id e1LabelOpt
@@ -293,24 +314,32 @@ compileCo (CCClosure fTy@(TFun b _ _) x e env) s = do
       return (alpha, [])
   addInstrs instrs
   return (VId epsilon)
-compileCo (CCApp _ (ACExternVar _ f) e) s = do
+compileCo (CCApp _ (ACExternVar (TFun _ _ t2) f) e) s = do
   alpha <- freshVarName
   e' <- compileAt e s
-  let stmt = Call alpha (VId ("@" ++ f)) [e']
+  let eTy = typeToLlvm (atExprGetType e)
+  let stmt = Call alpha (typeToLlvm t2) (VId ("@" ++ f)) [(e', eTy)]
   addExternals [f]
   addInstrs [stmt]
   return (VId alpha)
-compileCo (CCApp _ (ACVarSelf _) e2) s = do
+compileCo (CCApp _ (ACVarSelf (TFun b _ t2) f) e2) s = do
+  let e2Ty = typeToLlvm (atExprGetType e2)
   alpha <- freshVarName
   e2' <- compileAt e2 s
-  let stmt = Call alpha (VId "%self") [VId "%closure", e2']
-  addInstrs [stmt]
+  if Set.member AClo b then
+    addInstrs [Call alpha (typeToLlvm t2) (VId "%self") [
+      (VId "%closure", "i64"),
+      (e2', e2Ty)]]
+  else
+    addInstrs [Call alpha (typeToLlvm t2) (VId ("@" ++ f)) [(e2', e2Ty)]]
   return (VId alpha)
 compileCo (CCApp _ e1 e2) s = do
+  let e1Ty = typeToLlvm (atExprGetType e1)
+  let e2Ty = typeToLlvm (atExprGetType e2)
   e1' <- compileAt e1 s
   e2' <- compileAt e2 s
   case atExprGetType e1 of
-    (TFun b _ _) ->
+    (TFun b _ t2) ->
       if Set.member AClo b then do
         alpha <- freshVarName
         beta <- freshVarName
@@ -321,14 +350,16 @@ compileCo (CCApp _ e1 e2) s = do
         let stmt0 = Inttoptr alpha e1' "i64" clPtrTy
         let stmt1 = Load beta (clPtrTy, VId alpha)
         let stmt2 = Extractvalue gamma (VId beta) clTy 0
-        let stmt3 = Call delta (VId gamma) [e1', e2']
+        let stmt3 =
+              Call delta (typeToLlvm t2) (VId gamma) [(e1', e1Ty), (e2', e2Ty)]
         addInstrs [stmt0, stmt1, stmt2, stmt3]
         return (VId delta)
       else do
         delta <- freshVarName
-        addInstrs [Call delta e1' [e2']]
+        addInstrs [Call delta (typeToLlvm t2) e1' [(e2', e2Ty)]]
         return (VId delta)
     _ -> undefined
+
 compileExpr :: ExprNFCl -> (Id -> Value) -> CompilationM Value
 compileExpr (ECVal _ x) s = compileAt x s
 compileExpr (ECLet _ x e1 e2) s = do

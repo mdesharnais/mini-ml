@@ -1,0 +1,2 @@
+let f = fun b -> if b then 10 else 20 in
+extern print (f true)

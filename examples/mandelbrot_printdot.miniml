@@ -1,0 +1,35 @@
+let printdot = fun n ->
+  let print = extern print in
+  let h = 6*n*1024/60 in
+  let i = 6*n/60 in
+  let t = h - i*1024 in
+  let q = 1024 - t in
+  if (59 < n) then
+    let u = print 0 in
+    let u = print 0 in
+    print 0
+  else if (i < 1) then
+    let u = print 60 in
+    let u = print (60*t/1024) in
+    print 0
+  else if (i < 2) then
+    let u = print (60*q/1024) in
+    let u = print 60 in
+    print 0
+  else if (i < 3) then
+    let u = print 0 in
+    let u = print 60 in
+    print (60*t/1024)
+  else if (i < 4) then
+    let u = print 60 in
+    let u = print (60*q/1024) in
+    print 60
+  else if (i < 5) then
+    let u = print (60*t/1024) in
+    let u = print 0 in
+    print 60
+  else
+    let u = print 60 in
+    let u = print 0 in
+    print (60*q/1024) in
+printdot 1

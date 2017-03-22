@@ -18,6 +18,7 @@ compileFile code =
       let nf = Compiler.toNormalForm expr in
       let nfCl = Compiler.toClosure nf in
       let llvmIr = Compiler.Llvm.compile nfCl in
+      --show nf ++ "\n\n\n\n\n" ++ show nfCl ++ "\n\n\n\n\n" ++
       llvmIr
 
 main :: IO ()
