@@ -38,6 +38,8 @@ evalBinOpInt env t1 t2 result f = do
 eval :: Env tySch ty -> Expr tySch ty -> Maybe (Value tySch ty)
 eval env (Var _ x) = Data.List.lookup x env
 eval env (Abs _ x t) = Just (Closure x t env)
+eval env abs@(AbsRec _ f x t) =
+  let closure = Closure x t ((f, closure) : env) in Just closure
 eval env (App _ (ExternVar _ f) t2) = do
   v2 <- eval env t2
   case v2 of
@@ -69,6 +71,3 @@ eval env (If _ t1 t2 t3) = do
 eval env (Let _ (x, _) t1 t2) = do
   v1 <- eval env t1
   eval ((x, v1) : env) t2
-eval env (LetRec ty (f, ty2) (x, t1) t2) =
-  let closure = Closure x (LetRec ty (f, ty2) (x, t1) t1) env
-   in eval ((f, closure) : env) t2

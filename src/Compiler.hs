@@ -108,19 +108,17 @@ nf (If        ty e1 e2 e3) s k = nf e1 s (\e1' -> do
 nf (Let ty (x, _) e1 e2) s k =
   nf e1 s (\a ->
   nf e2 (\ty y -> if y == x then a else s ty y) (return . EVal (Expr.getType e2)))
-nf (LetRec ty (f, fTy) (x, e1) e2) s k = do
-  let rmTySch (TSType ty) = ty
-      rmTySch (TSForall _ ty) = rmTySch ty
-  a <- fresh
-  let subst ty y = if y == f then AVar ty a else s ty y
-  e1' <- nf e1 subst (return . EVal (Expr.getType e1))
-  e2' <- nf e2 subst (return . EVal (Expr.getType e2))
-  return (ELetRec ty (a, fTy) (x, e1') e2')
 nf (Abs ty x e) s k = do
   a <- fresh
   b <- nf e s (return . EVal (Expr.getType e))
   c <- k (AVar ty a)
   return (ELet (getType c) a (CAbs ty x b) c)
+nf (AbsRec ty f x e) s k = do
+  a <- fresh
+  let subst ty y = if y == f then AVar ty a else s ty y
+  b <- nf e subst (return . EVal (Expr.getType e))
+  c <- k (AVar ty a)
+  return (ELetRec ty (a, TSType ty) (x, b) c)
 nf (App ty e1 e2) s k = nf e1 s (\e1' -> nf e2 s (\e2' -> do
   a <- fresh
   d <- k (AVar ty a)

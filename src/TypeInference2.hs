@@ -151,25 +151,6 @@ inferImpl c (Let _ (x, _) e1 e2) = do
   let substs = Subst.comp s2 s1
   let cs = Set.union (substApplyConstraints s2 cs1) cs2
   return (Let ty2 (x, ty1') e1' e2', substs, cs)
-inferImpl c (LetRec _ (f, _) (x, e1) e2) = do
-  xTy <- freshSTVar
-  yTy <- freshSTVar
-  b <- freshAVar
-  (e1', s1, cs1) <- inferImpl
-    ((f, TSType (TFun b xTy yTy)) : (x, TSType xTy) : c) e1
-  let e1Ty = Expr.getType e1'
-  s1' <- lift (unify e1Ty (Subst.applyTy s1 yTy))
-  let appTy = Subst.applyTy
-  let appAn = Subst.applyAn
-  let b' = (s1' `appAn` (s1 `appAn` b))
-  let fTy = TFun b' (s1' `appTy` (s1 `appTy` xTy)) (s1' `appTy` e1Ty)
-  let fSubst = Subst.comp s1' s1
-  let fCs = Set.insert (Constraint (b', SAEmpty)) (substApplyConstraints s1' cs1)
-  (e2', s2, cs2) <- inferImpl ((f, TSType fTy) : Subst.applyContext fSubst c) e2
-  let ty2 = Expr.getType e2'
-  let substs = Subst.comp s2 s1
-  let cs = Set.union (substApplyConstraints s2 fCs) cs2
-  return (LetRec ty2 (f, TSType fTy) (x, e1') e2', substs, cs)
 inferImpl c (OpMul _ e1 e2) = checkBinOp OpMul TInt TInt TInt  c e1 e2
 inferImpl c (OpDiv _ e1 e2) = checkBinOp OpDiv TInt TInt TInt  c e1 e2
 inferImpl c (OpAdd _ e1 e2) = checkBinOp OpAdd TInt TInt TInt  c e1 e2

@@ -20,8 +20,8 @@ data Expr tySch ty =
   OpEQ      ty (Expr tySch ty) (Expr tySch ty) |
   If        ty (Expr tySch ty) (Expr tySch ty) (Expr tySch ty) |
   Let       ty (Id, tySch) (Expr tySch ty) (Expr tySch ty) |
-  LetRec    ty (Id, tySch) (Id, (Expr tySch ty)) (Expr tySch ty) |
   Abs       ty Id (Expr tySch ty) |
+  AbsRec    ty Id Id (Expr tySch ty) |
   App       ty (Expr tySch ty) (Expr tySch ty)
   deriving (Eq, Show)
 
@@ -38,8 +38,8 @@ getType (OpLT      ty _ _) = ty
 getType (OpEQ      ty _ _) = ty
 getType (If        ty _ _ _) = ty
 getType (Let       ty _ _ _) = ty
-getType (LetRec    ty _ _ _) = ty
 getType (Abs       ty _ _) = ty
+getType (AbsRec    ty _ _ _) = ty
 getType (App       ty _ _) = ty
 
 instance Bifunctor Expr where
@@ -57,10 +57,9 @@ instance Bifunctor Expr where
     If (g ty) (bimap f g e) (bimap f g e1) (bimap f g e2)
   bimap f g (Let       ty (x, xTy) e1 e2) =
     Let (g ty) (x, f xTy) (bimap f g e1) (bimap f g e2)
-  bimap f g (LetRec    ty (y, yTy) (x, e1) e2) =
-    LetRec (g ty) (y, f yTy) (x, (bimap f g e1)) (bimap f g e2)
-  bimap f g (Abs       ty x e) = Abs (g ty) x (bimap f g e)
-  bimap f g (App       ty e1 e2) = App (g ty) (bimap f g e1) (bimap f g e2)
+  bimap f g (Abs       ty x e)      = Abs (g ty) x (bimap f g e)
+  bimap f g (AbsRec    ty self x e) = AbsRec (g ty) self x (bimap f g e)
+  bimap f g (App       ty e1 e2)    = App (g ty) (bimap f g e1) (bimap f g e2)
 
 {-
 instance (Show tySch, Show ty) => Show (Expr tySch ty) where
@@ -79,8 +78,6 @@ instance (Show tySch, Show ty) => Show (Expr tySch ty) where
   show (Let _ (x, ty) e1 e2) =
     "let " ++ x ++ " : " ++ show ty ++ " = " ++
     show e1 ++ " in " ++ show e2
-  show (LetRec _ (f, ty) (x, e1) e2) =
-    "let rec " ++ f ++ " : " ++ show ty ++ " = " ++
     "fun " ++ x ++ " -> " ++ show e1 ++ " in " ++ show e2
   show (Abs _ x e1) = "(fun " ++ x ++ " -> " ++ show e1 ++ ")"
   show (App ty e1 e2) =
@@ -102,9 +99,6 @@ instance FreeVars (Expr a b) where
     let u = List.union in (freeVars e1) `u` (freeVars e2) `u` (freeVars e2)
   freeVars (Let _ (x, _) e1 e2) =
     List.union (freeVars e1) [a | a <- freeVars e2, a /= x]
-  freeVars (LetRec _ (f, _) (x, e1) e2) =
-    List.union
-      [a | a <- freeVars e1, a /= f && a /= x]
-      [a | a <- freeVars e2, a /= f]
   freeVars (Abs _ x e1)         = [a | a <- freeVars e1, a /= x]
-  freeVars (App ty e1 e2)       = List.union (freeVars e1) (freeVars e2)
+  freeVars (AbsRec _ self x e1)    = [a | a <- freeVars e1, a /= x && a /= self]
+  freeVars (App _ e1 e2)        = List.union (freeVars e1) (freeVars e2)

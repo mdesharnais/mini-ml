@@ -129,6 +129,23 @@ infer c e = do
           let cs = Set.insert (beta, pi) cs1
           let tau = TFun beta (Subst.applyTy s1 alpha) (Expr.getType e1')
           return (s1, cs, Abs tau x e1')
+        impl c (AbsRec _ f x e1) = do
+          let appTy = Subst.applyTy
+          let appAn = Subst.applyAn
+          let app = substApplyConstraints
+          alphaX <- genFreshTVar
+          alpha <- genFreshTVar
+          beta <- freshAVar
+          let fTy = TFun beta alphaX alpha
+          let c' = Context.addTy (x, alphaX) (Context.addTy (f, fTy) c)
+          (s1, cs1, e1') <- impl c' e1
+          let e1Ty = Expr.getType e1'
+          s2 <- lift $ unify e1Ty (appTy s1 alpha)
+          let beta' = appAn s2 (appAn s1 beta)
+          let ty = TFun beta' (appTy s2 (appTy s1 alphaX)) (appTy s2 e1Ty)
+          let pi = if List.null (freeVars e1 \\ [f, x]) then AFun else AClo
+          let cs = Set.insert (beta', pi) (app s2 (app s1 cs1))
+          return (s2 `o` s1, cs, AbsRec ty f x e1')
         impl c (App _ e1 e2) = do
           (s1, cs1, e1') <- impl c e1
           (s2, cs2, e2') <- impl (Subst.applyContext s1 c) e2
@@ -177,22 +194,6 @@ infer c e = do
           let e2Ty = Expr.getType e2'
           let cs = Set.union (substApplyConstraints s2 cs1) cs2
           return (s2 `o` s1, cs, Let e2Ty (x, e1Ty') e1' e2')
-        impl c (LetRec _ (f, _) (y, e1) e2) = do
-          alpha <- genFreshTVar
-          (s1, cs1, a@(Abs tau1 _ e1')) <-
-            impl (Context.addTy (f, alpha) c) (Abs () y e1)
-          s <- lift (unify (Subst.applyTy s1 alpha) tau1)
-          let appCo = Subst.applyContext
-          let s1' = appCo s1 c
-          let fv = freeVars (Subst.applyTy s1 tau1)
-          let tyVars = fv \\ (Context.extractTypeVars (appCo s s1'))
-          let tau1' = List.foldl (flip TSForall) (TSType tau1) tyVars
-          (s2, cs2, e2') <- impl (appCo s (Context.add (f, tau1') s1')) e2
-          let e2Ty = Expr.getType e2'
-          let subst = s2 `cat` s `cat` s1
-          let app = substApplyConstraints
-          let cs = Set.union (app s (app s2 cs1)) cs2
-          return (subst, cs, LetRec e2Ty (f, tau1') (y, e1') e2')
 
 infer2 :: Context -> Expr () () -> Either String TyExpr2
 infer2 c expr = do
