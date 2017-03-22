@@ -325,7 +325,7 @@ compileCo (CCClosure fTy@(TFun b _ _) x e env) s = do
             (TVar _) -> undefined
         bbb <- freshVarName
         let stmt = Insertvalue bbb (id, closureTy) (var'', "i64") (1 :| [n])
-        return (n + 1, VId bbb, instrs ++ (stmt : stmts))) (0, VId aaa, []) env
+        return (n + 1, VId bbb, stmt : instrs ++  stmts)) (0, VId aaa, []) env
       gamma <- freshVarName
       delta <- freshVarName
       epsilon <- freshVarName

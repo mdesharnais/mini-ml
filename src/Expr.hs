@@ -43,23 +43,23 @@ getType (AbsRec    ty _ _ _) = ty
 getType (App       ty _ _) = ty
 
 instance Bifunctor Expr where
-  bimap f g (LitInt    ty n) = LitInt    (g ty) n
-  bimap f g (LitBool   ty b) = LitBool   (g ty) b
-  bimap f g (Var       ty x) = Var       (g ty) x
-  bimap f g (ExternVar ty x) = ExternVar (g ty) x
-  bimap f g (OpAdd     ty e1 e2) = OpAdd (g ty) (bimap f g e1) (bimap f g e2)
-  bimap f g (OpSub     ty e1 e2) = OpSub (g ty) (bimap f g e1) (bimap f g e2)
-  bimap f g (OpMul     ty e1 e2) = OpMul (g ty) (bimap f g e1) (bimap f g e2)
-  bimap f g (OpDiv     ty e1 e2) = OpDiv (g ty) (bimap f g e1) (bimap f g e2)
-  bimap f g (OpLT      ty e1 e2) = OpLT  (g ty) (bimap f g e1) (bimap f g e2)
-  bimap f g (OpEQ      ty e1 e2) = OpEQ  (g ty) (bimap f g e1) (bimap f g e2)
-  bimap f g (If        ty e e1 e2) =
+  bimap f g (LitInt    ty n)        = LitInt    (g ty) n
+  bimap f g (LitBool   ty b)        = LitBool   (g ty) b
+  bimap f g (Var       ty x)        = Var       (g ty) x
+  bimap f g (ExternVar ty x)        = ExternVar (g ty) x
+  bimap f g (OpAdd     ty e1 e2)    = OpAdd (g ty) (bimap f g e1) (bimap f g e2)
+  bimap f g (OpSub     ty e1 e2)    = OpSub (g ty) (bimap f g e1) (bimap f g e2)
+  bimap f g (OpMul     ty e1 e2)    = OpMul (g ty) (bimap f g e1) (bimap f g e2)
+  bimap f g (OpDiv     ty e1 e2)    = OpDiv (g ty) (bimap f g e1) (bimap f g e2)
+  bimap f g (OpLT      ty e1 e2)    = OpLT  (g ty) (bimap f g e1) (bimap f g e2)
+  bimap f g (OpEQ      ty e1 e2)    = OpEQ  (g ty) (bimap f g e1) (bimap f g e2)
+  bimap f g (If        ty e e1 e2)  =
     If (g ty) (bimap f g e) (bimap f g e1) (bimap f g e2)
   bimap f g (Let       ty (x, xTy) e1 e2) =
     Let (g ty) (x, f xTy) (bimap f g e1) (bimap f g e2)
-  bimap f g (Abs       ty x e)      = Abs (g ty) x (bimap f g e)
+  bimap f g (Abs       ty x e)      = Abs    (g ty)      x (bimap f g e)
   bimap f g (AbsRec    ty self x e) = AbsRec (g ty) self x (bimap f g e)
-  bimap f g (App       ty e1 e2)    = App (g ty) (bimap f g e1) (bimap f g e2)
+  bimap f g (App       ty e1 e2)    = App    (g ty) (bimap f g e1) (bimap f g e2)
 
 {-
 instance (Show tySch, Show ty) => Show (Expr tySch ty) where
