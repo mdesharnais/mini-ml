@@ -58,6 +58,34 @@ type schemas. These are instanciated when every time a variable is referenced.
         | t -> t             (function)
         | α                  (type variables)
 
+## Closure implementation
+
+A closure is implemented as a 2-fields struct. The first field contains the 64
+bits function pointer. The second field is an array of environment variables.
+Those are encoded as 64 bits integers, which must be cast when inserted and
+extracted.
+
+```
+0              64             128            192            256
++--------------+--------------+--------------+--------------+
+| Fun. pointer | Env. var. 1  | Env. var. 2  | Env. var. n  |
++--------------+--------------+--------------+--------------+
+```
+
+## Optimizations
+
+### Constant propagation
+
+There is a very trivial constant propagation which optimizes unnecessarily
+trivial `let`-bindings. e.g. in the folloging, `n` gets inline at every use.
+
+    let n = 10 in ...
+
+### Closure avoidance
+
+A static analysis is performed to detect when a closure is not necessary. In
+that case, a normal function is generated.
+
 ## To do
 
  - Lexer (alex)
@@ -93,6 +121,28 @@ The directory `examples` contains a few programs which can be compiled and
 executed using the script `./compile examples`. In a normal run, only the name
 of the programm is displayed. However, in the event of a compilation or
 execution error, the output will be displayed on stdout.
+
+## Possible extansions
+
+### Generalized external function
+
+External functions are currently limitted to have type `int -> int`. With the
+addition of n-tuples, it would be possible to refer to any exterally defined
+function. The syntax needs to be change as followed:
+
+    extern (f : type)
+
+e.g.
+
+    extern (max : int * int -> int)
+
+### Polymorphic function code generation
+
+Currently, code is only generated for non-polymorphic functions. A strategy must
+be chosen: either one generic function or many specialized one (à la C++
+template).
+
+Literature on the subject?
 
 ## References
 
