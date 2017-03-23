@@ -66,11 +66,17 @@ Those are encoded as 64 bits integers, which must be cast when inserted and
 extracted.
 
 ```
-0              64             128            192            256
+0              64             128            192            (n + 1) * 64
 +--------------+--------------+--------------+--------------+
 | Fun. pointer | Env. var. 1  | Env. var. 2  | Env. var. n  |
 +--------------+--------------+--------------+--------------+
 ```
+
+## Garbage collection
+
+The default memory allocation strategy uses a simple `malloc(3)` and never
+deallocate memory. An alternative implementation uses the [Boehm-Demers-Weiser
+conservative C/C++ Garbage Collector](https://www.hboehm.info/gc/).
 
 ## Optimizations
 
@@ -122,7 +128,19 @@ executed using the script `./compile examples`. In a normal run, only the name
 of the programm is displayed. However, in the event of a compilation or
 execution error, the output will be displayed on stdout.
 
-## Possible extansions
+## Possible extensions
+
+### Type annotation
+
+Even though the types are fully infered, it would be usefull in many contexts,
+to be able to write type annotations directly in the source code. The folllowing
+syntax additions would be welcome:
+
+    let x : type-schema = e1 in e2
+    let rec f : type-schema = fun x -> e1 in e2
+    let rec f : type-schema = fun (x : type) -> e1 in e2
+    fun (x : type) -> e
+    (e : type)
 
 ### Generalized external function
 
@@ -143,6 +161,20 @@ be chosen: either one generic function or many specialized one (à la C++
 template).
 
 Literature on the subject?
+
+## Test infrastructure
+
+The current `test/Spec.hs` test infracstructure is highly unsatisfactory. It is
+hard to read, hard to extend and hard to modify. It requires extensive
+modification every time the intermediate language or the type inference
+implementation change.
+
+The `examples` directory is an improvement, but only tests if compilation and
+executioin succeed, not if the types and results are correct.
+
+The former would be possible with type annotations, while the later could be
+implemented with special comments in the source code, asserting the result of
+some implementation functions.
 
 ## References
 
